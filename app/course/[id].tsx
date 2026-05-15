@@ -11,8 +11,9 @@ const COLORS = {
 };
 
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   KeyboardAvoidingView,
@@ -26,41 +27,14 @@ import {
   View,
 } from "react-native";
 
-interface Assessment {
-  id: string;
-  name: string;
-  weight: number; // percentage of final grade (0–100)
-  score: number | null; // score achieved (0–100), null if not yet graded
-}
-
-// Mock initial data keyed by course id
-const INITIAL_ASSESSMENTS: Record<string, Assessment[]> = {
-  "1": [
-    { id: "a1", name: "Assignment 1", weight: 10, score: 88 },
-    { id: "a2", name: "Midterm Exam", weight: 30, score: 82 },
-    { id: "a3", name: "Assignment 2", weight: 10, score: null },
-    { id: "a4", name: "Final Exam", weight: 40, score: null },
-    { id: "a5", name: "Participation", weight: 10, score: 95 },
-  ],
-  "2": [
-    { id: "b1", name: "Lab Reports", weight: 20, score: 90 },
-    { id: "b2", name: "Midterm", weight: 30, score: 94 },
-    { id: "b3", name: "Final Exam", weight: 40, score: null },
-    { id: "b4", name: "Participation", weight: 10, score: 92 },
-  ],
-  "3": [
-    { id: "c1", name: "Assignments", weight: 30, score: 76 },
-    { id: "c2", name: "Project", weight: 30, score: 80 },
-    { id: "c3", name: "Final Exam", weight: 40, score: 79 },
-  ],
-};
-
-const COURSE_NAMES: Record<string, string> = {
-  "1": "Mathematics 101",
-  "2": "Physics",
-  "3": "Computer Science",
-  "4": "English Literature",
-};
+import {
+  addAssessment,
+  type Assessment,
+  deleteAssessment,
+  subscribeToAssessments,
+  updateAssessment,
+  updateCourse,
+} from "@/lib/firestore";
 
 function computeGrade(assessments: Assessment[]): number | null {
   const graded = assessments.filter((a) => a.score !== null);
@@ -80,14 +54,30 @@ export default function CourseDetailScreen() {
   const { id, name } = useLocalSearchParams<{ id: string; name: string }>();
   const router = useRouter();
 
-  const courseName = name ?? COURSE_NAMES[id ?? ""] ?? "Course";
-  const [assessments, setAssessments] = useState<Assessment[]>(
-    INITIAL_ASSESSMENTS[id ?? ""] ?? [],
-  );
+  const courseName = name ?? "Course";
+  const [assessments, setAssessments] = useState<Assessment[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!id) return;
+    const unsubscribe = subscribeToAssessments(id, (data) => {
+      setAssessments(data);
+      setLoading(false);
+    });
+    return unsubscribe;
+  }, [id]);
+
+  // Keep the course's computed grade in sync
+  useEffect(() => {
+    if (!id || loading) return;
+    const grade = computeGrade(assessments);
+    updateCourse(id, { grade: grade ?? undefined }).catch(() => {});
+  }, [assessments, id, loading]);
 
   const openAdd = () => {
     setEditingId(null);
@@ -105,7 +95,7 @@ export default function CourseDetailScreen() {
     setModalVisible(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const trimmedName = form.name.trim();
     if (!trimmedName) {
       Alert.alert("Validation", "Please enter a name for the assessment.");
@@ -125,22 +115,23 @@ export default function CourseDetailScreen() {
       }
     }
 
-    if (editingId) {
-      setAssessments((prev) =>
-        prev.map((a) =>
-          a.id === editingId ? { ...a, name: trimmedName, weight, score } : a,
-        ),
-      );
-    } else {
-      const newAssessment: Assessment = {
-        id: Date.now().toString(),
-        name: trimmedName,
-        weight,
-        score,
-      };
-      setAssessments((prev) => [...prev, newAssessment]);
+    setSaving(true);
+    try {
+      if (editingId) {
+        await updateAssessment(id!, editingId, {
+          name: trimmedName,
+          weight,
+          score,
+        });
+      } else {
+        await addAssessment(id!, { name: trimmedName, weight, score });
+      }
+      setModalVisible(false);
+    } catch (e) {
+      Alert.alert("Error", "Failed to save assessment. Please try again.");
+    } finally {
+      setSaving(false);
     }
-    setModalVisible(false);
   };
 
   const handleDelete = (assessment: Assessment) => {
@@ -152,10 +143,13 @@ export default function CourseDetailScreen() {
         {
           text: "Delete",
           style: "destructive",
-          onPress: () =>
-            setAssessments((prev) =>
-              prev.filter((a) => a.id !== assessment.id),
-            ),
+          onPress: async () => {
+            try {
+              await deleteAssessment(id!, assessment.id);
+            } catch (e) {
+              Alert.alert("Error", "Failed to delete assessment.");
+            }
+          },
         },
       ],
     );
@@ -163,6 +157,19 @@ export default function CourseDetailScreen() {
 
   const calculatedGrade = computeGrade(assessments);
   const totalWeight = assessments.reduce((sum, a) => sum + a.weight, 0);
+
+  if (loading) {
+    return (
+      <View
+        style={[
+          styles.container,
+          { justifyContent: "center", alignItems: "center" },
+        ]}
+      >
+        <ActivityIndicator size="large" color={COLORS.accent} />
+      </View>
+    );
+  }
 
   const renderAssessment = ({ item }: { item: Assessment }) => (
     <TouchableOpacity
@@ -309,9 +316,13 @@ export default function CourseDetailScreen() {
               >
                 <Text style={styles.cancelBtnText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
+              <TouchableOpacity
+                style={styles.saveBtn}
+                onPress={handleSave}
+                disabled={saving}
+              >
                 <Text style={styles.saveBtnText}>
-                  {editingId ? "Save Changes" : "Add"}
+                  {saving ? "Saving..." : editingId ? "Save Changes" : "Add"}
                 </Text>
               </TouchableOpacity>
             </View>

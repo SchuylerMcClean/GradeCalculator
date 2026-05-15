@@ -9,93 +9,54 @@ const COLORS = {
   textDim: "#94a3b8",
 };
 
+import {
+  addCourse,
+  type Course,
+  type CourseStatus,
+  deleteCourse,
+  subscribeToCourses,
+} from "@/lib/firestore";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   SafeAreaView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 
-// Define the Course type
-interface Course {
-  id: string;
-  name: string;
-  instructor?: string;
-  grade?: number;
-  credits?: number;
-  semester?: string;
-  status: "active" | "completed" | "planned";
-}
+const STATUS_OPTIONS: CourseStatus[] = ["active", "completed", "planned"];
+const EMPTY_FORM = {
+  name: "",
+  instructor: "",
+  status: "active" as CourseStatus,
+};
 
 export default function CoursesPage() {
   const router = useRouter();
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [refreshing, setRefreshing] = useState<boolean>(false);
 
-  // Fetch courses from database
-  const fetchCourses = async () => {
-    try {
-      setLoading(true);
-      // TODO: Replace with actual database call
-      // Example: const response = await api.get('/courses');
-      // const data = await response.json();
-
-      // Mock data for demonstration
-      const mockCourses: Course[] = [
-        {
-          id: "1",
-          name: "Mathematics 101",
-          instructor: "Dr. Smith",
-          grade: 85.5,
-          status: "active",
-        },
-        {
-          id: "2",
-          name: "Physics",
-          instructor: "Prof. Johnson",
-          grade: 92.0,
-          status: "active",
-        },
-        {
-          id: "3",
-          name: "Computer Science",
-          instructor: "Dr. Williams",
-          grade: 78.5,
-          status: "completed",
-        },
-        {
-          id: "4",
-          name: "English Literature",
-          instructor: "Prof. Davis",
-          status: "planned",
-        },
-      ];
-
-      setCourses(mockCourses);
-    } catch (error) {
-      console.error("Error fetching courses:", error);
-      Alert.alert("Error", "Failed to load courses. Please try again.");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+  // Add-course modal
+  const [modalVisible, setModalVisible] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetchCourses();
+    const unsubscribe = subscribeToCourses((data) => {
+      setCourses(data);
+      setLoading(false);
+    });
+    return unsubscribe;
   }, []);
-
-  const handleRefresh = () => {
-    setRefreshing(true);
-    fetchCourses();
-  };
 
   const handleCoursePress = (course: Course) => {
     router.push({
@@ -104,7 +65,51 @@ export default function CoursesPage() {
     });
   };
 
-  const getStatusColor = (status: Course["status"]) => {
+  const handleAddCourse = async () => {
+    if (!form.name.trim()) {
+      Alert.alert("Validation", "Please enter a course name.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await addCourse({
+        name: form.name.trim(),
+        instructor: form.instructor.trim() || undefined,
+        status: form.status,
+      });
+      setModalVisible(false);
+      setForm(EMPTY_FORM);
+    } catch (e) {
+      Alert.alert("Error", "Failed to add course. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteCourse = (course: Course) => {
+    Alert.alert(
+      "Delete Course",
+      `Remove "${course.name}" and all its assessments?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteCourse(course.id);
+            } catch (e) {
+              Alert.alert("Error", "Failed to delete course.");
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleRefresh = () => {}; // real-time listener keeps data fresh automatically
+
+  const getStatusColor = (status: CourseStatus) => {
     switch (status) {
       case "active":
         return "#4CAF50";
@@ -125,15 +130,24 @@ export default function CoursesPage() {
     >
       <View style={styles.courseHeader}>
         <Text style={styles.courseName}>{item.name}</Text>
-        <View
-          style={[
-            styles.statusBadge,
-            { backgroundColor: getStatusColor(item.status) },
-          ]}
-        >
-          <Text style={styles.statusText}>
-            {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
-          </Text>
+        <View style={styles.courseHeaderRight}>
+          <View
+            style={[
+              styles.statusBadge,
+              { backgroundColor: getStatusColor(item.status) },
+            ]}
+          >
+            <Text style={styles.statusText}>
+              {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => handleDeleteCourse(item)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={styles.deleteBtn}
+          >
+            <Text style={styles.deleteBtnText}>✕</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -162,10 +176,10 @@ export default function CoursesPage() {
     </View>
   );
 
-  if (loading && !refreshing) {
+  if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
+        <ActivityIndicator size="large" color={COLORS.accent} />
         <Text style={styles.loadingText}>Loading your courses...</Text>
       </View>
     );
@@ -175,7 +189,10 @@ export default function CoursesPage() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>My Courses</Text>
-        <TouchableOpacity style={styles.addButton}>
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={() => setModalVisible(true)}
+        >
           <Text style={styles.addButtonText}>+</Text>
         </TouchableOpacity>
       </View>
@@ -186,10 +203,87 @@ export default function CoursesPage() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
-        refreshing={refreshing}
-        onRefresh={handleRefresh}
         ListEmptyComponent={renderEmptyState}
       />
+
+      {/* Add Course Modal */}
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Add Course</Text>
+
+            <Text style={styles.fieldLabel}>Course Name</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. Mathematics 101"
+              placeholderTextColor={COLORS.textDim}
+              value={form.name}
+              onChangeText={(v) => setForm((f) => ({ ...f, name: v }))}
+            />
+
+            <Text style={styles.fieldLabel}>Instructor (optional)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. Dr. Smith"
+              placeholderTextColor={COLORS.textDim}
+              value={form.instructor}
+              onChangeText={(v) => setForm((f) => ({ ...f, instructor: v }))}
+            />
+
+            <Text style={styles.fieldLabel}>Status</Text>
+            <View style={styles.statusRow}>
+              {STATUS_OPTIONS.map((s) => (
+                <TouchableOpacity
+                  key={s}
+                  style={[
+                    styles.statusOption,
+                    form.status === s && styles.statusOptionActive,
+                  ]}
+                  onPress={() => setForm((f) => ({ ...f, status: s }))}
+                >
+                  <Text
+                    style={[
+                      styles.statusOptionText,
+                      form.status === s && styles.statusOptionTextActive,
+                    ]}
+                  >
+                    {s.charAt(0).toUpperCase() + s.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => {
+                  setModalVisible(false);
+                  setForm(EMPTY_FORM);
+                }}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.saveBtn}
+                onPress={handleAddCourse}
+                disabled={saving}
+              >
+                <Text style={styles.saveBtnText}>
+                  {saving ? "Saving..." : "Add Course"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -242,6 +336,19 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 8,
+  },
+  courseHeaderRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  deleteBtn: {
+    padding: 4,
+  },
+  deleteBtnText: {
+    color: COLORS.danger,
+    fontSize: 14,
+    fontWeight: "700",
   },
   courseName: {
     fontSize: 16,
@@ -320,5 +427,102 @@ const styles = StyleSheet.create({
     color: COLORS.textDim,
     textAlign: "center",
     paddingHorizontal: 32,
+  },
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: "#0f172a",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  modalTitle: {
+    color: COLORS.textMain,
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 20,
+  },
+  fieldLabel: {
+    color: COLORS.textDim,
+    fontSize: 12,
+    fontWeight: "600",
+    marginBottom: 6,
+    marginTop: 12,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  input: {
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    color: COLORS.textMain,
+    fontSize: 15,
+  },
+  statusRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 2,
+  },
+  statusOption: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: "center",
+  },
+  statusOptionActive: {
+    borderColor: COLORS.accent,
+    backgroundColor: "rgba(167, 139, 250, 0.15)",
+  },
+  statusOptionText: {
+    color: COLORS.textDim,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  statusOptionTextActive: {
+    color: COLORS.accent,
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 24,
+  },
+  cancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: "center",
+  },
+  cancelBtnText: {
+    color: COLORS.textDim,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  saveBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 20,
+    backgroundColor: "rgba(167, 139, 250, 0.2)",
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+    alignItems: "center",
+  },
+  saveBtnText: {
+    color: COLORS.accent,
+    fontSize: 14,
+    fontWeight: "700",
   },
 });
