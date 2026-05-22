@@ -9,23 +9,32 @@ const COLORS = {
   textDim: "#94a3b8",
 };
 
+import { confirmAction } from "@/lib/confirm";
 import {
   addCourse,
+  batchUpdateCourseOrders,
   type Course,
   type CourseStatus,
   deleteCourse,
+  initCourseOrder,
   subscribeToCourses,
 } from "@/lib/firestore";
 import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   KeyboardAvoidingView,
   Modal,
   Platform,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -40,6 +49,109 @@ const EMPTY_FORM = {
   status: "active" as CourseStatus,
 };
 
+// ─── Helpers & sub-components ─────────────────────────────────────────────────
+
+function getStatusColor(status: CourseStatus): string {
+  switch (status) {
+    case "active":
+      return "#4CAF50";
+    case "completed":
+      return "#2196F3";
+    case "planned":
+      return "#FF9800";
+    default:
+      return "#757575";
+  }
+}
+
+interface CourseCardProps {
+  item: Course;
+  isDragging: boolean;
+  onPress: () => void;
+  onDelete: () => void;
+  onDragStart: (clientY: number, cardClientY: number) => void;
+  onItemLayout: (height: number) => void;
+}
+
+function CourseCard({
+  item,
+  isDragging,
+  onPress,
+  onDelete,
+  onDragStart,
+  onItemLayout,
+}: CourseCardProps) {
+  const cardRef = useRef<any>(null);
+  return (
+    <View onLayout={(e) => onItemLayout(e.nativeEvent.layout.height)}>
+      <View
+        ref={cardRef}
+        style={[styles.courseCard, isDragging && styles.coursePlaceholder]}
+      >
+        {Platform.OS === "web" && (
+          <View
+            style={[styles.dragHandle, { cursor: "grab" } as any]}
+            {...({
+              onPointerDown: (e: any) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const rect = cardRef.current?.getBoundingClientRect?.();
+                onDragStart(
+                  e.nativeEvent?.clientY ?? e.clientY,
+                  rect?.top ?? e.nativeEvent?.clientY ?? e.clientY,
+                );
+              },
+            } as any)}
+          >
+            <Text style={styles.dragHandleText}>⠿</Text>
+          </View>
+        )}
+        <TouchableOpacity
+          style={styles.courseCardInner}
+          onPress={onPress}
+          activeOpacity={0.7}
+        >
+          <View style={styles.courseHeader}>
+            <Text style={styles.courseName}>{item.name}</Text>
+            <View style={styles.courseHeaderRight}>
+              <View
+                style={[
+                  styles.statusBadge,
+                  { backgroundColor: getStatusColor(item.status) },
+                ]}
+              >
+                <Text style={styles.statusText}>
+                  {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={onDelete}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={styles.deleteBtn}
+              >
+                <Text style={styles.deleteBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          {item.instructor && (
+            <Text style={styles.instructorText}>
+              Instructor: {item.instructor}
+            </Text>
+          )}
+          <View style={styles.courseDetails}>
+            {item.grade !== undefined && (
+              <View style={styles.gradeContainer}>
+                <Text style={styles.gradeLabel}>Current Grade:</Text>
+                <Text style={styles.gradeValue}>{item.grade.toFixed(1)}%</Text>
+              </View>
+            )}
+          </View>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 export default function CoursesPage() {
   const router = useRouter();
   const [courses, setCourses] = useState<Course[]>([]);
@@ -50,10 +162,23 @@ export default function CoursesPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
 
+  // ─── Drag state ───────────────────────────────────────────────────────────────
+  const [dragIdx, setDragIdx] = useState(-1);
+  const [hoverIdx, setHoverIdx] = useState(-1);
+  const [ghostTop, setGhostTop] = useState(0);
+  const dragIdxRef = useRef(-1);
+  const hoverIdxRef = useRef(-1);
+  const itemHeightsRef = useRef<number[]>([]);
+  const listTopRef = useRef(0);
+  const listScrollRef = useRef(0);
+  const listViewRef = useRef<any>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
+
   useEffect(() => {
     const unsubscribe = subscribeToCourses((data) => {
       setCourses(data);
       setLoading(false);
+      initCourseOrder(data).catch(() => {});
     });
     return unsubscribe;
   }, []);
@@ -61,7 +186,7 @@ export default function CoursesPage() {
   const handleCoursePress = (course: Course) => {
     router.push({
       pathname: "/course/[id]" as any,
-      params: { id: course.id, name: course.name },
+      params: { id: course.id, name: course.name, status: course.status },
     });
   };
 
@@ -76,6 +201,7 @@ export default function CoursesPage() {
         name: form.name.trim(),
         instructor: form.instructor.trim() || undefined,
         status: form.status,
+        order: courses.length,
       });
       setModalVisible(false);
       setForm(EMPTY_FORM);
@@ -86,94 +212,107 @@ export default function CoursesPage() {
     }
   };
 
-  const handleDeleteCourse = (course: Course) => {
-    Alert.alert(
+  const handleDeleteCourse = async (course: Course) => {
+    console.log("[DELETE COURSE] Confirming for:", course.id, course.name);
+    const confirmed = await confirmAction(
       "Delete Course",
       `Remove "${course.name}" and all its assessments?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await deleteCourse(course.id);
-            } catch (e) {
-              Alert.alert("Error", "Failed to delete course.");
-            }
-          },
-        },
-      ],
     );
-  };
-
-  const handleRefresh = () => {}; // real-time listener keeps data fresh automatically
-
-  const getStatusColor = (status: CourseStatus) => {
-    switch (status) {
-      case "active":
-        return "#4CAF50";
-      case "completed":
-        return "#2196F3";
-      case "planned":
-        return "#FF9800";
-      default:
-        return "#757575";
+    if (!confirmed) {
+      console.log("[DELETE COURSE] Cancelled");
+      return;
+    }
+    console.log(
+      "[DELETE COURSE] Confirmed, calling deleteCourse(",
+      course.id,
+      ")",
+    );
+    try {
+      await deleteCourse(course.id);
+      console.log("[DELETE COURSE] Success:", course.id);
+    } catch (e) {
+      console.error("[DELETE COURSE] Error:", e);
+      Alert.alert("Error", "Failed to delete course.");
     }
   };
 
-  const renderCourseCard = ({ item }: { item: Course }) => (
-    <TouchableOpacity
-      style={styles.courseCard}
-      onPress={() => handleCoursePress(item)}
-      activeOpacity={0.7}
-    >
-      <View style={styles.courseHeader}>
-        <Text style={styles.courseName}>{item.name}</Text>
-        <View style={styles.courseHeaderRight}>
-          <View
-            style={[
-              styles.statusBadge,
-              { backgroundColor: getStatusColor(item.status) },
-            ]}
-          >
-            <Text style={styles.statusText}>
-              {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
-            </Text>
-          </View>
-          <TouchableOpacity
-            onPress={() => handleDeleteCourse(item)}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={styles.deleteBtn}
-          >
-            <Text style={styles.deleteBtnText}>✕</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+  const displayCourses = useMemo(() => {
+    if (dragIdx === -1 || hoverIdx === -1 || hoverIdx === dragIdx)
+      return courses;
+    const arr = [...courses];
+    const [moved] = arr.splice(dragIdx, 1);
+    arr.splice(hoverIdx, 0, moved);
+    return arr;
+  }, [courses, dragIdx, hoverIdx]);
 
-      {item.instructor && (
-        <Text style={styles.instructorText}>Instructor: {item.instructor}</Text>
-      )}
+  const handleDragStart = useCallback(
+    (index: number, clientY: number, cardTop: number) => {
+      if (Platform.OS !== "web") return;
+      const doc = typeof document !== "undefined" ? document : null;
+      if (!doc) return;
+      const offset = clientY - cardTop;
+      const listRect = listViewRef.current?.getBoundingClientRect?.();
+      listTopRef.current = listRect?.top ?? 0;
+      dragIdxRef.current = index;
+      hoverIdxRef.current = index;
+      setDragIdx(index);
+      setHoverIdx(index);
+      setGhostTop(clientY - offset);
+      const itemCount = courses.length;
+      const MARGIN = 12;
 
-      <View style={styles.courseDetails}>
-        {item.grade !== undefined && (
-          <View style={styles.gradeContainer}>
-            <Text style={styles.gradeLabel}>Current Grade:</Text>
-            <Text style={styles.gradeValue}>{item.grade.toFixed(1)}%</Text>
-          </View>
-        )}
-      </View>
-    </TouchableOpacity>
-  );
+      const computeHover = (y: number): number => {
+        const relY = y - listTopRef.current + listScrollRef.current;
+        let accY = 0;
+        for (let i = 0; i < itemCount; i++) {
+          const h = itemHeightsRef.current[i] ?? 90;
+          if (relY < accY + h / 2) return i;
+          accY += h + MARGIN;
+        }
+        return itemCount - 1;
+      };
 
-  const renderEmptyState = () => (
-    <View style={styles.emptyContainer}>
-      <Text style={styles.emptyEmoji}>📚</Text>
-      <Text style={styles.emptyTitle}>No Courses Yet</Text>
-      <Text style={styles.emptyText}>
-        Add your first course to start tracking your grades!
-      </Text>
-    </View>
+      const commit = async (from: number, to: number) => {
+        const arr = [...courses];
+        const [moved] = arr.splice(from, 1);
+        arr.splice(to, 0, moved);
+        try {
+          await batchUpdateCourseOrders(
+            arr.map((c, i) => ({ id: c.id, order: i })),
+          );
+        } catch {
+          Alert.alert("Error", "Failed to reorder courses.");
+        }
+      };
+
+      const onMove = (e: Event) => {
+        const pe = e as PointerEvent;
+        setGhostTop(pe.clientY - offset);
+        const newHover = computeHover(pe.clientY);
+        if (newHover !== hoverIdxRef.current) {
+          hoverIdxRef.current = newHover;
+          setHoverIdx(newHover);
+        }
+      };
+
+      const onUp = () => {
+        doc.removeEventListener("pointermove", onMove);
+        doc.removeEventListener("pointerup", onUp);
+        const from = dragIdxRef.current;
+        const to = hoverIdxRef.current;
+        dragIdxRef.current = -1;
+        hoverIdxRef.current = -1;
+        setDragIdx(-1);
+        setHoverIdx(-1);
+        if (from !== -1 && to !== -1 && from !== to) {
+          commit(from, to);
+        }
+      };
+
+      doc.addEventListener("pointermove", onMove);
+      doc.addEventListener("pointerup", onUp);
+    },
+    [courses],
   );
 
   if (loading) {
@@ -197,14 +336,48 @@ export default function CoursesPage() {
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        data={courses}
-        renderItem={renderCourseCard}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContainer}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={renderEmptyState}
-      />
+      <View ref={listViewRef} style={{ flex: 1 }}>
+        <ScrollView
+          ref={scrollViewRef}
+          contentContainerStyle={styles.listContainer}
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScroll={(e) => {
+            listScrollRef.current = e.nativeEvent.contentOffset.y;
+          }}
+        >
+          {displayCourses.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyEmoji}>📚</Text>
+              <Text style={styles.emptyTitle}>No Courses Yet</Text>
+              <Text style={styles.emptyText}>
+                Add your first course to start tracking your grades!
+              </Text>
+            </View>
+          ) : (
+            displayCourses.map((item) => {
+              const courseIndex = courses.findIndex((c) => c.id === item.id);
+              const isDragging =
+                dragIdx !== -1 && item.id === courses[dragIdx]?.id;
+              return (
+                <CourseCard
+                  key={item.id}
+                  item={item}
+                  isDragging={isDragging}
+                  onPress={() => handleCoursePress(item)}
+                  onDelete={() => handleDeleteCourse(item)}
+                  onDragStart={(clientY, cardTop) =>
+                    handleDragStart(courseIndex, clientY, cardTop)
+                  }
+                  onItemLayout={(height) => {
+                    itemHeightsRef.current[courseIndex] = height;
+                  }}
+                />
+              );
+            })
+          )}
+        </ScrollView>
+      </View>
 
       {/* Add Course Modal */}
       <Modal
@@ -284,6 +457,46 @@ export default function CoursesPage() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Drag ghost */}
+      {dragIdx !== -1 && courses[dragIdx] != null && (
+        <Modal visible transparent animationType="none">
+          <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+            <View
+              style={[
+                styles.ghostCard,
+                Platform.OS === "web" &&
+                  ({ boxShadow: "0 12px 40px rgba(0,0,0,0.65)" } as any),
+                { top: ghostTop },
+              ]}
+            >
+              <View style={styles.dragHandle}>
+                <Text style={styles.dragHandleText}>⠿</Text>
+              </View>
+              <View style={styles.courseCardInner}>
+                <View style={styles.courseHeader}>
+                  <Text style={styles.courseName}>{courses[dragIdx].name}</Text>
+                  <View
+                    style={[
+                      styles.statusBadge,
+                      {
+                        backgroundColor: getStatusColor(
+                          courses[dragIdx].status,
+                        ),
+                      },
+                    ]}
+                  >
+                    <Text style={styles.statusText}>
+                      {courses[dragIdx].status.charAt(0).toUpperCase() +
+                        courses[dragIdx].status.slice(1)}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -324,12 +537,45 @@ const styles = StyleSheet.create({
     paddingBottom: 80,
   },
   courseCard: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: COLORS.card,
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: 16,
-    padding: 16,
     marginBottom: 12,
+    overflow: "hidden",
+  },
+  courseCardInner: {
+    flex: 1,
+    padding: 16,
+  },
+  coursePlaceholder: {
+    opacity: 0.3,
+  },
+  dragHandle: {
+    width: 34,
+    alignSelf: "stretch",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  dragHandleText: {
+    color: COLORS.textDim,
+    fontSize: 18,
+    lineHeight: 22,
+  },
+  ghostCard: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+    borderRadius: 16,
+    overflow: "hidden",
+    transform: [{ scale: 1.03 }],
   },
   courseHeader: {
     flexDirection: "row",

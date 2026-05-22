@@ -20,6 +20,7 @@ const MAPPING = {
   calculator: "calculate",
   "calculator.fill": "calculate",
   "star.fill": "star",
+  "book.fill": "menu-book",
   "chevron.left.forwardslash.chevron.right": "code",
   "chevron.right": "chevron-right",
 } as IconMapping;

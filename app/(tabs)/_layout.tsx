@@ -32,7 +32,7 @@ export default function TabLayout() {
         options={{
           title: "Calculator",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="equal" color={color} />
+            <IconSymbol size={28} name="calculator" color={color} />
           ),
         }}
       />
@@ -41,7 +41,7 @@ export default function TabLayout() {
         options={{
           title: "My Courses",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="star.fill" color={color} />
+            <IconSymbol size={28} name="book.fill" color={color} />
           ),
         }}
       />
