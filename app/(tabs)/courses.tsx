@@ -9,7 +9,9 @@ const COLORS = {
   textDim: "#94a3b8",
 };
 
+import { useAuth } from "@/lib/auth-context";
 import { confirmAction } from "@/lib/confirm";
+import { auth } from "@/lib/firebase";
 import {
   addCourse,
   batchUpdateCourseOrders,
@@ -20,6 +22,7 @@ import {
   subscribeToCourses,
 } from "@/lib/firestore";
 import { useRouter } from "expo-router";
+import { signOut } from "firebase/auth";
 import React, {
   useCallback,
   useEffect,
@@ -154,6 +157,8 @@ function CourseCard({
 
 export default function CoursesPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const uid = user?.uid ?? "";
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -175,13 +180,14 @@ export default function CoursesPage() {
   const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
-    const unsubscribe = subscribeToCourses((data) => {
+    if (!uid) return;
+    const unsubscribe = subscribeToCourses(uid, (data) => {
       setCourses(data);
       setLoading(false);
-      initCourseOrder(data).catch(() => {});
+      initCourseOrder(uid, data).catch(() => {});
     });
     return unsubscribe;
-  }, []);
+  }, [uid]);
 
   const handleCoursePress = (course: Course) => {
     router.push({
@@ -197,7 +203,7 @@ export default function CoursesPage() {
     }
     setSaving(true);
     try {
-      await addCourse({
+      await addCourse(uid, {
         name: form.name.trim(),
         instructor: form.instructor.trim() || undefined,
         status: form.status,
@@ -228,7 +234,7 @@ export default function CoursesPage() {
       ")",
     );
     try {
-      await deleteCourse(course.id);
+      await deleteCourse(uid, course.id);
       console.log("[DELETE COURSE] Success:", course.id);
     } catch (e) {
       console.error("[DELETE COURSE] Error:", e);
@@ -278,6 +284,7 @@ export default function CoursesPage() {
         arr.splice(to, 0, moved);
         try {
           await batchUpdateCourseOrders(
+            uid,
             arr.map((c, i) => ({ id: c.id, order: i })),
           );
         } catch {
@@ -312,7 +319,7 @@ export default function CoursesPage() {
       doc.addEventListener("pointermove", onMove);
       doc.addEventListener("pointerup", onUp);
     },
-    [courses],
+    [courses, uid],
   );
 
   if (loading) {
@@ -326,57 +333,70 @@ export default function CoursesPage() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Courses</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => setModalVisible(true)}
-        >
-          <Text style={styles.addButtonText}>+</Text>
-        </TouchableOpacity>
-      </View>
+      <View style={styles.maxWidthContent}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>My Courses</Text>
+          <View style={styles.headerRight}>
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => setModalVisible(true)}
+            >
+              <Text style={styles.addButtonText}>+</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.signOutBtn}
+              onPress={async () => {
+                await signOut(auth);
+                router.replace("/(auth)/login" as any);
+              }}
+            >
+              <Text style={styles.signOutText}>Sign Out</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
-      <View ref={listViewRef} style={{ flex: 1 }}>
-        <ScrollView
-          ref={scrollViewRef}
-          contentContainerStyle={styles.listContainer}
-          showsVerticalScrollIndicator={false}
-          scrollEventThrottle={16}
-          onScroll={(e) => {
-            listScrollRef.current = e.nativeEvent.contentOffset.y;
-          }}
-        >
-          {displayCourses.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyEmoji}>📚</Text>
-              <Text style={styles.emptyTitle}>No Courses Yet</Text>
-              <Text style={styles.emptyText}>
-                Add your first course to start tracking your grades!
-              </Text>
-            </View>
-          ) : (
-            displayCourses.map((item) => {
-              const courseIndex = courses.findIndex((c) => c.id === item.id);
-              const isDragging =
-                dragIdx !== -1 && item.id === courses[dragIdx]?.id;
-              return (
-                <CourseCard
-                  key={item.id}
-                  item={item}
-                  isDragging={isDragging}
-                  onPress={() => handleCoursePress(item)}
-                  onDelete={() => handleDeleteCourse(item)}
-                  onDragStart={(clientY, cardTop) =>
-                    handleDragStart(courseIndex, clientY, cardTop)
-                  }
-                  onItemLayout={(height) => {
-                    itemHeightsRef.current[courseIndex] = height;
-                  }}
-                />
-              );
-            })
-          )}
-        </ScrollView>
+        <View ref={listViewRef} style={{ flex: 1 }}>
+          <ScrollView
+            ref={scrollViewRef}
+            contentContainerStyle={styles.listContainer}
+            showsVerticalScrollIndicator={false}
+            scrollEventThrottle={16}
+            onScroll={(e) => {
+              listScrollRef.current = e.nativeEvent.contentOffset.y;
+            }}
+          >
+            {displayCourses.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyEmoji}>📚</Text>
+                <Text style={styles.emptyTitle}>No Courses Yet</Text>
+                <Text style={styles.emptyText}>
+                  Add your first course to start tracking your grades!
+                </Text>
+              </View>
+            ) : (
+              displayCourses.map((item) => {
+                const courseIndex = courses.findIndex((c) => c.id === item.id);
+                const isDragging =
+                  dragIdx !== -1 && item.id === courses[dragIdx]?.id;
+                return (
+                  <CourseCard
+                    key={item.id}
+                    item={item}
+                    isDragging={isDragging}
+                    onPress={() => handleCoursePress(item)}
+                    onDelete={() => handleDeleteCourse(item)}
+                    onDragStart={(clientY, cardTop) =>
+                      handleDragStart(courseIndex, clientY, cardTop)
+                    }
+                    onItemLayout={(height) => {
+                      itemHeightsRef.current[courseIndex] = height;
+                    }}
+                  />
+                );
+              })
+            )}
+          </ScrollView>
+        </View>
       </View>
 
       {/* Add Course Modal */}
@@ -463,33 +483,45 @@ export default function CoursesPage() {
         <Modal visible transparent animationType="none">
           <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
             <View
-              style={[
-                styles.ghostCard,
-                Platform.OS === "web" &&
-                  ({ boxShadow: "0 12px 40px rgba(0,0,0,0.65)" } as any),
-                { top: ghostTop },
-              ]}
+              style={{
+                position: "absolute",
+                top: ghostTop,
+                left: 0,
+                right: 0,
+                alignItems: "center",
+                paddingHorizontal: 16,
+              }}
             >
-              <View style={styles.dragHandle}>
-                <Text style={styles.dragHandleText}>⠿</Text>
-              </View>
-              <View style={styles.courseCardInner}>
-                <View style={styles.courseHeader}>
-                  <Text style={styles.courseName}>{courses[dragIdx].name}</Text>
-                  <View
-                    style={[
-                      styles.statusBadge,
-                      {
-                        backgroundColor: getStatusColor(
-                          courses[dragIdx].status,
-                        ),
-                      },
-                    ]}
-                  >
-                    <Text style={styles.statusText}>
-                      {courses[dragIdx].status.charAt(0).toUpperCase() +
-                        courses[dragIdx].status.slice(1)}
+              <View
+                style={[
+                  styles.ghostCard,
+                  Platform.OS === "web" &&
+                    ({ boxShadow: "0 12px 40px rgba(0,0,0,0.65)" } as any),
+                ]}
+              >
+                <View style={styles.dragHandle}>
+                  <Text style={styles.dragHandleText}>⠿</Text>
+                </View>
+                <View style={styles.courseCardInner}>
+                  <View style={styles.courseHeader}>
+                    <Text style={styles.courseName}>
+                      {courses[dragIdx].name}
                     </Text>
+                    <View
+                      style={[
+                        styles.statusBadge,
+                        {
+                          backgroundColor: getStatusColor(
+                            courses[dragIdx].status,
+                          ),
+                        },
+                      ]}
+                    >
+                      <Text style={styles.statusText}>
+                        {courses[dragIdx].status.charAt(0).toUpperCase() +
+                          courses[dragIdx].status.slice(1)}
+                      </Text>
+                    </View>
                   </View>
                 </View>
               </View>
@@ -507,6 +539,12 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg,
     paddingTop: 40,
   },
+  maxWidthContent: {
+    flex: 1,
+    width: "100%",
+    maxWidth: 900,
+    alignSelf: "center",
+  },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -518,6 +556,11 @@ const styles = StyleSheet.create({
     color: COLORS.textMain,
     fontSize: 20,
     fontWeight: "700",
+  },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
   addButton: {
     paddingHorizontal: 12,
@@ -531,6 +574,18 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
     fontSize: 18,
     fontWeight: "800",
+  },
+  signOutBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+  },
+  signOutText: {
+    color: COLORS.textDim,
+    fontSize: 13,
+    fontWeight: "600",
   },
   listContainer: {
     paddingHorizontal: 16,
@@ -555,7 +610,7 @@ const styles = StyleSheet.create({
   },
   dragHandle: {
     width: 34,
-    alignSelf: "stretch",
+    alignSelf: "center",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -565,9 +620,8 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   ghostCard: {
-    position: "absolute",
-    left: 16,
-    right: 16,
+    width: "100%",
+    maxWidth: 900,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.card,
@@ -679,6 +733,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.6)",
     justifyContent: "flex-end",
+    alignItems: "center",
   },
   modalContent: {
     backgroundColor: "#0f172a",
@@ -688,6 +743,8 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     padding: 24,
     paddingBottom: 40,
+    width: "100%",
+    maxWidth: 900,
   },
   modalTitle: {
     color: COLORS.textMain,

@@ -40,6 +40,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
+import { useAuth } from "@/lib/auth-context";
 import { confirmAction } from "@/lib/confirm";
 import {
   addAssessment,
@@ -56,18 +57,18 @@ import {
 } from "@/lib/firestore";
 
 function computeGrade(assessments: Assessment[]): number | null {
-  const graded = assessments.filter((a) => a.score !== null);
+  const graded = assessments.filter((a) => a.grade !== null);
   if (graded.length === 0) return null;
   const totalWeight = graded.reduce((sum, a) => sum + a.weight, 0);
   if (totalWeight === 0) return null;
   const weightedSum = graded.reduce(
-    (sum, a) => sum + (a.score as number) * a.weight,
+    (sum, a) => sum + (a.grade as number) * a.weight,
     0,
   );
   return weightedSum / totalWeight;
 }
 
-const EMPTY_FORM = { name: "", weight: "", score: "" };
+const EMPTY_FORM = { name: "", weight: "", grade: "" };
 
 // ─── Animated assessment card ─────────────────────────────────────────────────
 
@@ -147,9 +148,9 @@ function AssessmentCard({
             <Text style={styles.assessmentWeight}>Weight: {item.weight}%</Text>
           </View>
           <View style={styles.assessmentRight}>
-            {item.score !== null ? (
-              <Text style={styles.assessmentScore}>
-                {item.score.toFixed(1)}%
+            {item.grade !== null ? (
+              <Text style={styles.assessmentGrade}>
+                {item.grade.toFixed(1)}%
               </Text>
             ) : (
               <Text style={styles.assessmentPending}>—</Text>
@@ -179,6 +180,8 @@ export default function CourseDetailScreen() {
     status: CourseStatus;
   }>();
   const router = useRouter();
+  const { user } = useAuth();
+  const uid = user?.uid ?? "";
 
   const courseName = name ?? "Course";
   const [assessments, setAssessments] = useState<Assessment[]>([]);
@@ -208,23 +211,22 @@ export default function CourseDetailScreen() {
   const scoreInputRef = useRef<any>(null);
 
   useEffect(() => {
-    if (!id) return;
-    const unsubscribe = subscribeToAssessments(id, (data) => {
+    if (!id || !uid) return;
+    const unsubscribe = subscribeToAssessments(uid, id, (data) => {
       setAssessments(data);
       setLoading(false);
-      // Migrate existing assessments that don't have an order field yet
-      initAssessmentOrder(id, data).catch(() => {});
+      initAssessmentOrder(uid, id, data).catch(() => {});
     });
     return unsubscribe;
-  }, [id]);
+  }, [id, uid]);
 
   // Keep the course's computed grade in sync
   useEffect(() => {
-    if (!id || loading || deletingRef.current) return;
+    if (!id || !uid || loading || deletingRef.current) return;
     const grade = computeGrade(assessments);
     if (grade === null) return;
-    updateCourse(id, { grade }).catch(() => {});
-  }, [assessments, id, loading]);
+    updateCourse(uid, id, { grade }).catch(() => {});
+  }, [assessments, id, uid, loading]);
 
   const handleDeleteCourse = async () => {
     console.log("[DELETE COURSE] Confirming for course:", id, courseName);
@@ -239,7 +241,7 @@ export default function CourseDetailScreen() {
     console.log("[DELETE COURSE] Confirmed, calling deleteCourse(", id, ")");
     deletingRef.current = true;
     try {
-      await deleteCourse(id!);
+      await deleteCourse(uid, id!);
       console.log("[DELETE COURSE] Success, navigating to courses tab");
       router.replace("/(tabs)/courses" as any);
     } catch (e) {
@@ -253,7 +255,7 @@ export default function CourseDetailScreen() {
     if (newStatus === courseStatus) return;
     setCourseStatus(newStatus);
     try {
-      await updateCourse(id!, { status: newStatus });
+      await updateCourse(uid, id!, { status: newStatus });
     } catch (e) {
       setCourseStatus(courseStatus);
       Alert.alert("Error", "Failed to update course status.");
@@ -278,7 +280,7 @@ export default function CourseDetailScreen() {
     setForm({
       name: assessment.name,
       weight: String(assessment.weight),
-      score: assessment.score !== null ? String(assessment.score) : "",
+      grade: assessment.grade !== null ? String(assessment.grade) : "",
     });
     setModalVisible(true);
   };
@@ -294,11 +296,11 @@ export default function CourseDetailScreen() {
       Alert.alert("Validation", "Weight must be a number between 0 and 100.");
       return;
     }
-    let score: number | null = null;
-    if (form.score.trim() !== "") {
-      score = parseFloat(form.score);
-      if (isNaN(score) || score < 0 || score > 100) {
-        Alert.alert("Validation", "Score must be a number between 0 and 100.");
+    let grade: number | null = null;
+    if (form.grade.trim() !== "") {
+      grade = parseFloat(form.grade);
+      if (isNaN(grade) || grade < 0 || grade > 100) {
+        Alert.alert("Validation", "Grade must be a number between 0 and 100.");
         return;
       }
     }
@@ -306,16 +308,16 @@ export default function CourseDetailScreen() {
     setSaving(true);
     try {
       if (editingId) {
-        await updateAssessment(id!, editingId, {
+        await updateAssessment(uid, id!, editingId, {
           name: trimmedName,
           weight,
-          score,
+          grade,
         });
       } else {
-        await addAssessment(id!, {
+        await addAssessment(uid, id!, {
           name: trimmedName,
           weight,
-          score,
+          grade,
           order: assessments.length,
         });
       }
@@ -348,7 +350,7 @@ export default function CourseDetailScreen() {
       ")",
     );
     try {
-      await deleteAssessment(id!, assessment.id);
+      await deleteAssessment(uid, id!, assessment.id);
       console.log("[DELETE ASSESSMENT] Success:", assessment.id);
     } catch (e) {
       console.error("[DELETE ASSESSMENT] Error:", e);
@@ -370,7 +372,7 @@ export default function CourseDetailScreen() {
       [b.id]: (prev[b.id] ?? 0) + 1,
     }));
     try {
-      await swapAssessmentOrder(id!, a.id, a.order, b.id, b.order);
+      await swapAssessmentOrder(uid, id!, a.id, a.order, b.id, b.order);
     } catch (e) {
       Alert.alert("Error", "Failed to reorder assessments.");
     }
@@ -423,6 +425,7 @@ export default function CourseDetailScreen() {
         arr.splice(to, 0, moved);
         try {
           await batchUpdateOrders(
+            uid,
             id!,
             arr.map((a, i) => ({ id: a.id, order: i })),
           );
@@ -458,7 +461,7 @@ export default function CourseDetailScreen() {
       doc.addEventListener("pointermove", onMove);
       doc.addEventListener("pointerup", onUp);
     },
-    [assessments, id],
+    [assessments, id, uid],
   );
 
   if (loading) {
@@ -476,149 +479,154 @@ export default function CourseDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backBtnText}>‹ Back</Text>
-        </TouchableOpacity>
-        <View style={styles.headerRight}>
+      <View style={styles.maxWidthContent}>
+        {/* Header */}
+        <View style={styles.header}>
           <TouchableOpacity
-            style={styles.deleteCourseBtnHeader}
-            onPress={handleDeleteCourse}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            onPress={() => router.back()}
+            style={styles.backBtn}
           >
-            <Text style={styles.deleteCourseText}>Delete</Text>
+            <Text style={styles.backBtnText}>‹ Back</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.addButton} onPress={openAdd}>
-            <Text style={styles.addButtonText}>+ Add</Text>
-          </TouchableOpacity>
+          <View style={styles.headerRight}>
+            <TouchableOpacity
+              style={styles.deleteCourseBtnHeader}
+              onPress={handleDeleteCourse}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.deleteCourseText}>Delete</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.addButton} onPress={openAdd}>
+              <Text style={styles.addButtonText}>+ Add</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
 
-      <Text style={styles.courseName}>{courseName}</Text>
+        <Text style={styles.courseName}>{courseName}</Text>
 
-      {/* Status selector */}
-      <View style={styles.statusRow}>
-        {(["active", "completed", "planned"] as CourseStatus[]).map((s) => (
-          <TouchableOpacity
-            key={s}
-            style={[
-              styles.statusChip,
-              courseStatus === s && styles.statusChipActive,
-              courseStatus === s &&
-                s === "active" && {
-                  borderColor: COLORS.success,
-                  backgroundColor: "rgba(74, 222, 128, 0.15)",
-                },
-              courseStatus === s &&
-                s === "completed" && {
-                  borderColor: COLORS.accent,
-                  backgroundColor: "rgba(167, 139, 250, 0.15)",
-                },
-              courseStatus === s &&
-                s === "planned" && {
-                  borderColor: COLORS.textDim,
-                  backgroundColor: "rgba(148, 163, 184, 0.15)",
-                },
-            ]}
-            onPress={() => handleStatusChange(s)}
-            activeOpacity={0.7}
-          >
+        {/* Status selector */}
+        <View style={styles.statusRow}>
+          {(["active", "completed", "planned"] as CourseStatus[]).map((s) => (
+            <TouchableOpacity
+              key={s}
+              style={[
+                styles.statusChip,
+                courseStatus === s && styles.statusChipActive,
+                courseStatus === s &&
+                  s === "active" && {
+                    borderColor: COLORS.success,
+                    backgroundColor: "rgba(74, 222, 128, 0.15)",
+                  },
+                courseStatus === s &&
+                  s === "completed" && {
+                    borderColor: COLORS.accent,
+                    backgroundColor: "rgba(167, 139, 250, 0.15)",
+                  },
+                courseStatus === s &&
+                  s === "planned" && {
+                    borderColor: COLORS.textDim,
+                    backgroundColor: "rgba(148, 163, 184, 0.15)",
+                  },
+              ]}
+              onPress={() => handleStatusChange(s)}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.statusChipText,
+                  courseStatus === s &&
+                    s === "active" && { color: COLORS.success },
+                  courseStatus === s &&
+                    s === "completed" && { color: COLORS.accent },
+                  courseStatus === s &&
+                    s === "planned" && { color: COLORS.textDim },
+                ]}
+              >
+                {s.charAt(0).toUpperCase() + s.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.subtitle}>Assessment Components</Text>
+
+        {/* Grade summary */}
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryLabel}>Calculated Grade</Text>
             <Text
               style={[
-                styles.statusChipText,
-                courseStatus === s &&
-                  s === "active" && { color: COLORS.success },
-                courseStatus === s &&
-                  s === "completed" && { color: COLORS.accent },
-                courseStatus === s &&
-                  s === "planned" && { color: COLORS.textDim },
+                styles.summaryValue,
+                {
+                  color:
+                    calculatedGrade !== null ? COLORS.success : COLORS.textDim,
+                },
               ]}
             >
-              {s.charAt(0).toUpperCase() + s.slice(1)}
+              {calculatedGrade !== null
+                ? `${calculatedGrade.toFixed(1)}%`
+                : "No grades yet"}
             </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <Text style={styles.subtitle}>Assessment Components</Text>
-
-      {/* Grade summary */}
-      <View style={styles.summaryCard}>
-        <View style={styles.summaryItem}>
-          <Text style={styles.summaryLabel}>Calculated Grade</Text>
-          <Text
-            style={[
-              styles.summaryValue,
-              {
-                color:
-                  calculatedGrade !== null ? COLORS.success : COLORS.textDim,
-              },
-            ]}
-          >
-            {calculatedGrade !== null
-              ? `${calculatedGrade.toFixed(1)}%`
-              : "No grades yet"}
-          </Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryLabel}>Total Weight</Text>
+            <Text
+              style={[
+                styles.summaryValue,
+                { color: totalWeight === 100 ? COLORS.success : COLORS.danger },
+              ]}
+            >
+              {totalWeight}%
+            </Text>
+          </View>
         </View>
-        <View style={styles.summaryDivider} />
-        <View style={styles.summaryItem}>
-          <Text style={styles.summaryLabel}>Total Weight</Text>
-          <Text
-            style={[
-              styles.summaryValue,
-              { color: totalWeight === 100 ? COLORS.success : COLORS.danger },
-            ]}
-          >
-            {totalWeight}%
-          </Text>
-        </View>
-      </View>
 
-      <View ref={listViewRef} style={{ flex: 1 }}>
-        <ScrollView
-          ref={scrollViewRef}
-          contentContainerStyle={styles.listContainer}
-          showsVerticalScrollIndicator={false}
-          scrollEventThrottle={16}
-          onScroll={(e) => {
-            listScrollRef.current = e.nativeEvent.contentOffset.y;
-          }}
-        >
-          {displayAssessments.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyEmoji}>📝</Text>
-              <Text style={styles.emptyTitle}>No Assessments Yet</Text>
-              <Text style={styles.emptyText}>
-                Tap "+ Add" to add your first assessment component.
-              </Text>
-            </View>
-          ) : (
-            displayAssessments.map((item, displayIndex) => {
-              const assessmentIndex = assessments.findIndex(
-                (a) => a.id === item.id,
-              );
-              const isDragging =
-                dragIdx !== -1 && item.id === assessments[dragIdx]?.id;
-              return (
-                <AssessmentCard
-                  key={item.id}
-                  item={item}
-                  flashKey={flashKeys[item.id] ?? 0}
-                  isDragging={isDragging}
-                  onEdit={() => openEdit(item)}
-                  onDelete={() => handleDelete(item)}
-                  onDragStart={(clientY, cardTop) =>
-                    handleDragStart(assessmentIndex, clientY, cardTop)
-                  }
-                  onItemLayout={(height) => {
-                    itemHeightsRef.current[assessmentIndex] = height;
-                  }}
-                />
-              );
-            })
-          )}
-        </ScrollView>
+        <View ref={listViewRef} style={{ flex: 1 }}>
+          <ScrollView
+            ref={scrollViewRef}
+            contentContainerStyle={styles.listContainer}
+            showsVerticalScrollIndicator={false}
+            scrollEventThrottle={16}
+            onScroll={(e) => {
+              listScrollRef.current = e.nativeEvent.contentOffset.y;
+            }}
+          >
+            {displayAssessments.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyEmoji}>📝</Text>
+                <Text style={styles.emptyTitle}>No Assessments Yet</Text>
+                <Text style={styles.emptyText}>
+                  Tap "+ Add" to add your first assessment component.
+                </Text>
+              </View>
+            ) : (
+              displayAssessments.map((item, displayIndex) => {
+                const assessmentIndex = assessments.findIndex(
+                  (a) => a.id === item.id,
+                );
+                const isDragging =
+                  dragIdx !== -1 && item.id === assessments[dragIdx]?.id;
+                return (
+                  <AssessmentCard
+                    key={item.id}
+                    item={item}
+                    flashKey={flashKeys[item.id] ?? 0}
+                    isDragging={isDragging}
+                    onEdit={() => openEdit(item)}
+                    onDelete={() => handleDelete(item)}
+                    onDragStart={(clientY, cardTop) =>
+                      handleDragStart(assessmentIndex, clientY, cardTop)
+                    }
+                    onItemLayout={(height) => {
+                      itemHeightsRef.current[assessmentIndex] = height;
+                    }}
+                  />
+                );
+              })
+            )}
+          </ScrollView>
+        </View>
       </View>
 
       {/* Add / Edit Modal */}
@@ -657,7 +665,7 @@ export default function CourseDetailScreen() {
             />
 
             <Text style={styles.fieldLabel}>
-              Score (%) — leave blank if not graded
+              Grade (%) — leave blank if not graded
             </Text>
             <TextInput
               ref={scoreInputRef}
@@ -665,8 +673,8 @@ export default function CourseDetailScreen() {
               placeholder="e.g. 85"
               placeholderTextColor={COLORS.textDim}
               keyboardType="decimal-pad"
-              value={form.score}
-              onChangeText={(v) => setForm((f) => ({ ...f, score: v }))}
+              value={form.grade}
+              onChangeText={(v) => setForm((f) => ({ ...f, grade: v }))}
             />
 
             <View style={styles.modalActions}>
@@ -695,35 +703,45 @@ export default function CourseDetailScreen() {
         <Modal visible transparent animationType="none">
           <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
             <View
-              style={[
-                styles.ghostCard,
-                Platform.OS === "web" &&
-                  ({
-                    boxShadow: "0 12px 40px rgba(0,0,0,0.65)",
-                  } as any),
-                { top: ghostTop },
-              ]}
+              style={{
+                position: "absolute",
+                top: ghostTop,
+                left: 0,
+                right: 0,
+                alignItems: "center",
+                paddingHorizontal: 16,
+              }}
             >
-              <View style={styles.dragHandle}>
-                <Text style={styles.dragHandleText}>⠿</Text>
-              </View>
-              <View style={[styles.assessmentInner, { flex: 1 }]}>
-                <View style={styles.assessmentLeft}>
-                  <Text style={styles.assessmentName}>
-                    {assessments[dragIdx].name}
-                  </Text>
-                  <Text style={styles.assessmentWeight}>
-                    Weight: {assessments[dragIdx].weight}%
-                  </Text>
+              <View
+                style={[
+                  styles.ghostCard,
+                  Platform.OS === "web" &&
+                    ({
+                      boxShadow: "0 12px 40px rgba(0,0,0,0.65)",
+                    } as any),
+                ]}
+              >
+                <View style={styles.dragHandle}>
+                  <Text style={styles.dragHandleText}>⠿</Text>
                 </View>
-                <View style={styles.assessmentRight}>
-                  {assessments[dragIdx].score !== null ? (
-                    <Text style={styles.assessmentScore}>
-                      {assessments[dragIdx].score!.toFixed(1)}%
+                <View style={[styles.assessmentInner, { flex: 1 }]}>
+                  <View style={styles.assessmentLeft}>
+                    <Text style={styles.assessmentName}>
+                      {assessments[dragIdx].name}
                     </Text>
-                  ) : (
-                    <Text style={styles.assessmentPending}>—</Text>
-                  )}
+                    <Text style={styles.assessmentWeight}>
+                      Weight: {assessments[dragIdx].weight}%
+                    </Text>
+                  </View>
+                  <View style={styles.assessmentRight}>
+                    {assessments[dragIdx].grade !== null ? (
+                      <Text style={styles.assessmentGrade}>
+                        {assessments[dragIdx].grade!.toFixed(1)}%
+                      </Text>
+                    ) : (
+                      <Text style={styles.assessmentPending}>—</Text>
+                    )}
+                  </View>
                 </View>
               </View>
             </View>
@@ -739,6 +757,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.bg,
     paddingTop: 40,
+  },
+  maxWidthContent: {
+    flex: 1,
+    width: "100%",
+    maxWidth: 800,
+    alignSelf: "center",
   },
   header: {
     flexDirection: "row",
@@ -877,9 +901,8 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   ghostCard: {
-    position: "absolute",
-    left: 16,
-    right: 16,
+    width: "100%",
+    maxWidth: 900,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.card,
@@ -914,7 +937,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
   },
-  assessmentScore: {
+  assessmentGrade: {
     color: COLORS.accent,
     fontSize: 16,
     fontWeight: "800",

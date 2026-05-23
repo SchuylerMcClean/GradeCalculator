@@ -1,11 +1,11 @@
 import React, { useState } from "react";
 import {
+  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  useWindowDimensions,
   View,
 } from "react-native";
 
@@ -59,7 +59,6 @@ const InputRow = ({
 };
 
 export default function HomeScreen() {
-  const { height } = useWindowDimensions();
   const [rows, setRows] = useState([
     { id: "1", grade: "", worth: "", gradePortion: 0 },
   ]);
@@ -95,75 +94,91 @@ export default function HomeScreen() {
   const total = worthSum === 0 ? 0 : (gradePortionSum / worthSum) * 100;
 
   return (
-    <View style={[styles.page, { height }]}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Grade Calculator</Text>
-        <View style={styles.totalBadge}>
-          <Text style={styles.totalText}>{total.toFixed(1)}%</Text>
-        </View>
-      </View>
-
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.sectionLabelContainer}>
-          <Text style={styles.sectionLabel}>ASSESSMENT COMPONENTS</Text>
-        </View>
-
-        {rows.map((row) => (
-          <InputRow
-            key={row.id}
-            grade={row.grade}
-            worth={row.worth}
-            onChangeGrade={(g) => updateRow(row.id, "grade", g)}
-            onChangeWorth={(w) => updateRow(row.id, "worth", w)}
-            onDelete={() => removeRow(row.id)}
-          />
-        ))}
-
-        <TouchableOpacity style={styles.addButton} onPress={addRow}>
-          <Text style={styles.addButtonText}>+ ADD COMPONENT</Text>
-        </TouchableOpacity>
-
-        {/* Predictive AI Box */}
-        {worthSum > 0 && worthSum < 100 && (
-          <View style={styles.aiCard}>
-            <Text style={styles.aiTitle}>✨ PREDICTIVE INSIGHT</Text>
-            <View style={styles.goalInputRow}>
-              <Text style={styles.aiBody}>Target Grade:</Text>
-              <TextInput
-                style={styles.smallInput}
-                value={gradeGoal}
-                onChangeText={setGradeGoal}
-                keyboardType="numeric"
-                placeholder="90"
-                placeholderTextColor={COLORS.textDim}
-              />
-            </View>
-            <Text style={styles.aiPrediction}>
-              {gradeGoal
-                ? `You need ${(((Number(gradeGoal) - gradePortionSum) / (100 - worthSum)) * 100).toFixed(1)}% on remaining tasks.`
-                : "Enter a goal to see your path to success."}
-            </Text>
+    <SafeAreaView style={styles.page}>
+      <View style={styles.maxWidthContent}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Grade Calculator</Text>
+          <View style={styles.totalBadge}>
+            <Text style={styles.totalText}>{total.toFixed(1)}%</Text>
           </View>
-        )}
-      </ScrollView>
-    </View>
+        </View>
+
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.sectionLabelContainer}>
+            <Text style={styles.sectionLabel}>ASSESSMENT COMPONENTS</Text>
+          </View>
+
+          {rows.map((row) => (
+            <InputRow
+              key={row.id}
+              grade={row.grade}
+              worth={row.worth}
+              onChangeGrade={(g) => updateRow(row.id, "grade", g)}
+              onChangeWorth={(w) => updateRow(row.id, "worth", w)}
+              onDelete={() => removeRow(row.id)}
+            />
+          ))}
+
+          <TouchableOpacity style={styles.addButton} onPress={addRow}>
+            <Text style={styles.addButtonText}>+ Add Component</Text>
+          </TouchableOpacity>
+
+          {/* Predictive AI Box */}
+          {worthSum > 0 && worthSum < 100 && (
+            <View style={styles.aiCard}>
+              <View style={styles.goalInputRow}>
+                <Text style={styles.aiBody}>Target Grade:</Text>
+                <TextInput
+                  style={styles.smallInput}
+                  value={gradeGoal}
+                  onChangeText={setGradeGoal}
+                  keyboardType="numeric"
+                  placeholder="90"
+                  placeholderTextColor={COLORS.textDim}
+                />
+              </View>
+              <Text style={styles.aiPrediction}>
+                {gradeGoal
+                  ? (() => {
+                      const needed =
+                        ((Number(gradeGoal) - gradePortionSum) /
+                          (100 - worthSum)) *
+                        100;
+                      return needed > 100
+                        ? `It is impossible to receive your desired grade. You need ${needed.toFixed(1)}% on remaining tasks.`
+                        : needed < 0
+                          ? "You have already guaranteed your desired grade."
+                          : `You need ${needed.toFixed(1)}% on remaining tasks.`;
+                    })()
+                  : "Enter a goal to see your path to success."}
+              </Text>
+            </View>
+          )}
+        </ScrollView>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { backgroundColor: COLORS.bg, paddingTop: 60 },
+  page: { flex: 1, backgroundColor: COLORS.bg, paddingTop: 40 },
+  maxWidthContent: {
+    flex: 1,
+    width: "100%",
+    maxWidth: 900,
+    alignSelf: "center",
+  },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 24,
-    marginBottom: 30,
+    paddingHorizontal: 20,
+    marginBottom: 18,
   },
   title: {
     color: COLORS.textMain,
-    fontSize: 24,
-    fontWeight: "200",
-    letterSpacing: 1,
+    fontSize: 20,
+    fontWeight: "700",
   },
   totalBadge: {
     backgroundColor: "rgba(167, 139, 250, 0.15)",
@@ -186,7 +201,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 20,
+    borderRadius: 16,
     flexDirection: "row",
     padding: 12,
     gap: 12,
@@ -215,14 +230,13 @@ const styles = StyleSheet.create({
   },
   addButton: {
     borderWidth: 1,
-    borderStyle: "dashed",
-    borderColor: COLORS.border,
-    borderRadius: 20,
-    padding: 16,
+    borderColor: COLORS.accent,
+    borderRadius: 12,
+    paddingVertical: 12,
     alignItems: "center",
     marginTop: 8,
   },
-  addButtonText: { color: COLORS.textDim, fontSize: 12, fontWeight: "600" },
+  addButtonText: { color: COLORS.accent, fontSize: 14, fontWeight: "700" },
   aiCard: {
     marginTop: 40,
     backgroundColor: "rgba(167, 139, 250, 0.08)",
