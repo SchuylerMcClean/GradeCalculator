@@ -358,8 +358,33 @@ export default function CourseDetailScreen() {
     }
   };
 
+  const [desiredGrade, setDesiredGrade] = useState("");
+  const [weightWarningDismissed, setWeightWarningDismissed] = useState(false);
+
   const calculatedGrade = computeGrade(assessments);
   const totalWeight = assessments.reduce((sum, a) => sum + a.weight, 0);
+  const gradedWeight = assessments
+    .filter((a) => a.grade !== null)
+    .reduce((sum, a) => sum + a.weight, 0);
+
+  // Re-show the warning whenever the total weight changes
+  useEffect(() => {
+    setWeightWarningDismissed(false);
+  }, [totalWeight]);
+
+  // ─── Desired final grade calculation ────────────────────────────────────────
+  const requiredScore = useMemo((): number | null => {
+    const desired = parseFloat(desiredGrade);
+    if (isNaN(desired) || desired < 0 || desired > 100) return null;
+    const ungradedWeight = assessments
+      .filter((a) => a.grade === null)
+      .reduce((sum, a) => sum + a.weight, 0);
+    if (ungradedWeight === 0) return null;
+    const currentWeightedSum = assessments
+      .filter((a) => a.grade !== null)
+      .reduce((sum, a) => sum + (a.grade as number) * a.weight, 0);
+    return (desired * 100 - currentWeightedSum) / ungradedWeight;
+  }, [desiredGrade, assessments]);
 
   const moveAssessment = async (index: number, direction: "up" | "down") => {
     const targetIndex = direction === "up" ? index - 1 : index + 1;
@@ -548,6 +573,64 @@ export default function CourseDetailScreen() {
           ))}
         </View>
 
+        {/* Desired final grade */}
+        {courseStatus === "active" && (
+          <View style={styles.desiredCard}>
+            <Text style={styles.desiredTitle}>Desired Final Grade</Text>
+            <View style={styles.desiredRow}>
+              <TextInput
+                style={styles.desiredInput}
+                placeholder="e.g. 85"
+                placeholderTextColor={COLORS.textDim}
+                keyboardType="decimal-pad"
+                value={desiredGrade}
+                onChangeText={setDesiredGrade}
+                maxLength={6}
+              />
+              <Text style={styles.desiredPercent}>%</Text>
+              <View style={styles.desiredResultBox}>
+                {desiredGrade.trim() === "" ? (
+                  <Text style={styles.desiredHint}>Enter a target grade</Text>
+                ) : requiredScore === null ? (
+                  assessments.filter((a) => a.grade === null).length === 0 ? (
+                    <Text style={styles.desiredHint}>
+                      No ungraded assessments. Add and/or leave some assessments
+                      ungraded to calculate required score.
+                    </Text>
+                  ) : (
+                    <Text style={styles.desiredHint}>Invalid target</Text>
+                  )
+                ) : (
+                  <View style={styles.desiredResultInner}>
+                    <Text style={styles.desiredResultLabel}>
+                      Need on remaining
+                    </Text>
+                    <Text
+                      style={[
+                        styles.desiredResultValue,
+                        {
+                          color:
+                            requiredScore > 100
+                              ? COLORS.danger
+                              : requiredScore < 0
+                                ? COLORS.textDim
+                                : COLORS.success,
+                        },
+                      ]}
+                    >
+                      {requiredScore < 0
+                        ? "Already achieved"
+                        : requiredScore > 100
+                          ? `${requiredScore.toFixed(1)}% (not possible)`
+                          : `${requiredScore.toFixed(1)}%`}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          </View>
+        )}
+
         <Text style={styles.subtitle}>Assessment Components</Text>
 
         {/* Grade summary */}
@@ -559,13 +642,36 @@ export default function CourseDetailScreen() {
                 styles.summaryValue,
                 {
                   color:
-                    calculatedGrade !== null ? COLORS.success : COLORS.textDim,
+                    calculatedGrade === null
+                      ? COLORS.textDim
+                      : calculatedGrade < 50
+                        ? COLORS.danger
+                        : calculatedGrade < 80
+                          ? "#facc15"
+                          : COLORS.success,
                 },
               ]}
             >
               {calculatedGrade !== null
                 ? `${calculatedGrade.toFixed(1)}%`
                 : "No grades yet"}
+            </Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryLabel}>Graded Weight</Text>
+            <Text
+              style={[
+                styles.summaryValue,
+                {
+                  color:
+                    gradedWeight === totalWeight
+                      ? COLORS.success
+                      : COLORS.accent,
+                },
+              ]}
+            >
+              {gradedWeight}%
             </Text>
           </View>
           <View style={styles.summaryDivider} />
@@ -581,6 +687,24 @@ export default function CourseDetailScreen() {
             </Text>
           </View>
         </View>
+
+        {totalWeight !== 100 &&
+          assessments.length > 0 &&
+          !weightWarningDismissed && (
+            <View style={styles.weightWarning}>
+              <Text style={styles.weightWarningText}>
+                ⚠ Your assessment weights add up to {totalWeight}%, not 100%.
+                Double-check that all components are entered correctly.
+              </Text>
+              <TouchableOpacity
+                onPress={() => setWeightWarningDismissed(true)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={styles.weightWarningClose}
+              >
+                <Text style={styles.weightWarningCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
         <View ref={listViewRef} style={{ flex: 1 }}>
           <ScrollView
@@ -873,6 +997,33 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "800",
   },
+  weightWarning: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    backgroundColor: "rgba(248, 113, 113, 0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(248, 113, 113, 0.35)",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  weightWarningText: {
+    color: COLORS.danger,
+    fontSize: 13,
+    lineHeight: 18,
+    flex: 1,
+  },
+  weightWarningClose: {
+    padding: 2,
+  },
+  weightWarningCloseText: {
+    color: COLORS.danger,
+    fontSize: 14,
+    fontWeight: "700",
+  },
   listContainer: {
     paddingHorizontal: 16,
     paddingBottom: 80,
@@ -1051,5 +1202,70 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
     fontSize: 14,
     fontWeight: "700",
+  },
+  // Desired final grade card
+  desiredCard: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 16,
+    padding: 16,
+  },
+  desiredTitle: {
+    color: COLORS.textDim,
+    fontSize: 12,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 12,
+  },
+  desiredRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  desiredInput: {
+    backgroundColor: COLORS.inputBg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: COLORS.textMain,
+    fontSize: 16,
+    fontWeight: "700",
+    width: 90,
+    textAlign: "center",
+  },
+  desiredPercent: {
+    color: COLORS.textDim,
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  desiredResultBox: {
+    flex: 1,
+    marginLeft: 8,
+    justifyContent: "center",
+  },
+  desiredHint: {
+    color: COLORS.textDim,
+    fontSize: 13,
+    fontStyle: "italic",
+  },
+  desiredResultInner: {
+    gap: 2,
+  },
+  desiredResultLabel: {
+    color: COLORS.textDim,
+    fontSize: 11,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  desiredResultValue: {
+    fontSize: 18,
+    fontWeight: "800",
   },
 });
