@@ -4,10 +4,10 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { AppTextInput } from "@/components/app-text-input";
 
 const COLORS = {
   bg: "#020617",
@@ -35,17 +35,17 @@ const InputRow = ({
 }) => {
   return (
     <View style={styles.inputRowCard}>
-      <TextInput
+      <AppTextInput
         style={styles.inputBox}
-        placeholder="Grade"
+        placeholder="Grade (%)"
         placeholderTextColor={COLORS.textDim}
         keyboardType="numeric"
         value={grade}
         onChangeText={onChangeGrade}
       />
-      <TextInput
+      <AppTextInput
         style={styles.inputBox}
-        placeholder="Weight"
+        placeholder="Weight (%)"
         placeholderTextColor={COLORS.textDim}
         keyboardType="numeric"
         value={worth}
@@ -95,15 +95,18 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.page}>
-      <View style={styles.maxWidthContent}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Grade Calculator</Text>
-          <View style={styles.totalBadge}>
-            <Text style={styles.totalText}>{total.toFixed(1)}%</Text>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scrollContent}
+      >
+        <View style={styles.maxWidthContent}>
+          <View style={styles.header}>
+            <Text style={styles.title}>Grade Calculator</Text>
+            <View style={styles.totalBadge}>
+              <Text style={styles.totalText}>{total.toFixed(1)}%</Text>
+            </View>
           </View>
-        </View>
 
-        <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.sectionLabelContainer}>
             <Text style={styles.sectionLabel}>ASSESSMENT COMPONENTS</Text>
           </View>
@@ -127,8 +130,8 @@ export default function HomeScreen() {
           {worthSum > 0 && worthSum < 100 && (
             <View style={styles.aiCard}>
               <View style={styles.goalInputRow}>
-                <Text style={styles.aiBody}>Target Grade:</Text>
-                <TextInput
+                <Text style={styles.aiBody}>Desired Final Grade:</Text>
+                <AppTextInput
                   style={styles.smallInput}
                   value={gradeGoal}
                   onChangeText={setGradeGoal}
@@ -150,12 +153,12 @@ export default function HomeScreen() {
                           ? "You have already guaranteed your desired grade."
                           : `You need ${needed.toFixed(1)}% on remaining tasks.`;
                     })()
-                  : "Enter a goal to see your path to success."}
+                  : "Enter a target grade to see what you need on remaining assessments to achieve it."}
               </Text>
             </View>
           )}
-        </ScrollView>
-      </View>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -163,10 +166,11 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: COLORS.bg, paddingTop: 40 },
   maxWidthContent: {
-    flex: 1,
     width: "100%",
     maxWidth: 900,
     alignSelf: "center",
+    paddingHorizontal: 20,
+    paddingBottom: 100,
   },
   header: {
     flexDirection: "row",
@@ -189,7 +193,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.accent,
   },
   totalText: { color: COLORS.accent, fontSize: 18, fontWeight: "700" },
-  scrollContent: { paddingHorizontal: 20, paddingBottom: 100 },
+  scrollContent: { flexGrow: 1 },
   sectionLabelContainer: { marginBottom: 12, paddingLeft: 4 },
   sectionLabel: {
     color: COLORS.textDim,

@@ -14,6 +14,7 @@ export default function Index() {
   }
 
   if (!user) return <Redirect href="/(auth)/login" />;
+  if (!user.emailVerified) return <Redirect href="/(auth)/verify-email" />;
   return <Redirect href="/(tabs)/calculator" />;
 }
 

@@ -1,7 +1,8 @@
 import { auth } from "@/lib/firebase";
+import { AppTextInput } from "@/components/app-text-input";
 import { useRouter } from "expo-router";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import React, { useState } from "react";
+import { signInWithEmailAndPassword, signOut } from "firebase/auth";
+import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -31,6 +32,9 @@ export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [passwordPlaceholderVisible, setPasswordPlaceholderVisible] =
+    useState(true);
+  const passwordRef = useRef<any>(null);
 
   const handleLogin = async () => {
     if (!email.trim() || !password) {
@@ -39,7 +43,19 @@ export default function LoginScreen() {
     }
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email.trim(), password);
+      const credential = await signInWithEmailAndPassword(
+        auth,
+        email.trim(),
+        password,
+      );
+      if (!credential.user.emailVerified) {
+        await signOut(auth);
+        Alert.alert(
+          "Email Not Verified",
+          "Please verify your email address before signing in. Check your inbox for the verification link.",
+        );
+        return;
+      }
       router.replace("/(tabs)/calculator" as any);
     } catch (e: any) {
       const msg =
@@ -65,7 +81,7 @@ export default function LoginScreen() {
           <Text style={styles.subtitle}>Sign in to your account</Text>
 
           <Text style={styles.label}>Email</Text>
-          <TextInput
+          <AppTextInput
             style={styles.input}
             value={email}
             onChangeText={setEmail}
@@ -74,17 +90,25 @@ export default function LoginScreen() {
             autoCapitalize="none"
             keyboardType="email-address"
             autoComplete="email"
+            returnKeyType="next"
+            onSubmitEditing={() => passwordRef.current?.focus()}
+            blurOnSubmit={false}
           />
 
           <Text style={styles.label}>Password</Text>
           <TextInput
+            ref={passwordRef}
             style={styles.input}
             value={password}
             onChangeText={setPassword}
-            placeholder="••••••••"
+            placeholder={passwordPlaceholderVisible ? "••••••••" : ""}
             placeholderTextColor={COLORS.textDim}
             secureTextEntry
             autoComplete="password"
+            returnKeyType="go"
+            onFocus={() => setPasswordPlaceholderVisible(false)}
+            onBlur={() => setPasswordPlaceholderVisible(true)}
+            onSubmitEditing={handleLogin}
           />
 
           <TouchableOpacity

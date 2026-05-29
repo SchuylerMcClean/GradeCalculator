@@ -22,7 +22,7 @@ import {
   subscribeToCourses,
 } from "@/lib/firestore";
 import { useRouter } from "expo-router";
-import { signOut } from "firebase/auth";
+import { AppTextInput } from "@/components/app-text-input";
 import React, {
   useCallback,
   useEffect,
@@ -40,7 +40,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -333,7 +332,7 @@ export default function CoursesPage() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.maxWidthContent}>
+      <View style={styles.headerWrapper}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>My Courses</Text>
           <View style={styles.headerRight}>
@@ -341,30 +340,22 @@ export default function CoursesPage() {
               style={styles.addButton}
               onPress={() => setModalVisible(true)}
             >
-              <Text style={styles.addButtonText}>+</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.signOutBtn}
-              onPress={async () => {
-                await signOut(auth);
-                router.replace("/(auth)/login" as any);
-              }}
-            >
-              <Text style={styles.signOutText}>Sign Out</Text>
+              <Text style={styles.addButtonText}>+ Add Course</Text>
             </TouchableOpacity>
           </View>
         </View>
-
-        <View ref={listViewRef} style={{ flex: 1 }}>
-          <ScrollView
-            ref={scrollViewRef}
-            contentContainerStyle={styles.listContainer}
-            showsVerticalScrollIndicator={false}
-            scrollEventThrottle={16}
-            onScroll={(e) => {
-              listScrollRef.current = e.nativeEvent.contentOffset.y;
-            }}
-          >
+      </View>
+      <View ref={listViewRef} style={{ flex: 1 }}>
+        <ScrollView
+          ref={scrollViewRef}
+          contentContainerStyle={styles.listContainer}
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScroll={(e) => {
+            listScrollRef.current = e.nativeEvent.contentOffset.y;
+          }}
+        >
+          <View style={styles.maxWidthContent}>
             {displayCourses.length === 0 ? (
               <View style={styles.emptyContainer}>
                 <Text style={styles.emptyEmoji}>📚</Text>
@@ -395,8 +386,8 @@ export default function CoursesPage() {
                 );
               })
             )}
-          </ScrollView>
-        </View>
+          </View>
+        </ScrollView>
       </View>
 
       {/* Add Course Modal */}
@@ -414,7 +405,7 @@ export default function CoursesPage() {
             <Text style={styles.modalTitle}>Add Course</Text>
 
             <Text style={styles.fieldLabel}>Course Name</Text>
-            <TextInput
+            <AppTextInput
               style={styles.input}
               placeholder="e.g. Mathematics 101"
               placeholderTextColor={COLORS.textDim}
@@ -423,7 +414,7 @@ export default function CoursesPage() {
             />
 
             <Text style={styles.fieldLabel}>Instructor (optional)</Text>
-            <TextInput
+            <AppTextInput
               style={styles.input}
               placeholder="e.g. Dr. Smith"
               placeholderTextColor={COLORS.textDim}
@@ -539,11 +530,16 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg,
     paddingTop: 40,
   },
-  maxWidthContent: {
-    flex: 1,
+  headerWrapper: {
     width: "100%",
     maxWidth: 900,
     alignSelf: "center",
+  },
+  maxWidthContent: {
+    width: "100%",
+    maxWidth: 900,
+    alignSelf: "center",
+    paddingHorizontal: 16,
   },
   header: {
     flexDirection: "row",
@@ -572,23 +568,11 @@ const styles = StyleSheet.create({
   },
   addButtonText: {
     color: COLORS.accent,
-    fontSize: 18,
-    fontWeight: "800",
+    fontSize: 14,
+    fontWeight: "700",
   },
-  signOutBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
-  },
-  signOutText: {
-    color: COLORS.textDim,
-    fontSize: 13,
-    fontWeight: "600",
-  },
+
   listContainer: {
-    paddingHorizontal: 16,
     paddingBottom: 80,
   },
   courseCard: {

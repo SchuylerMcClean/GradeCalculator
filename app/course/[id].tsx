@@ -41,10 +41,12 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { useAuth } from "@/lib/auth-context";
+import { AppTextInput } from "@/components/app-text-input";
 import { confirmAction } from "@/lib/confirm";
 import {
   addAssessment,
   type Assessment,
+  type BundleItem,
   batchUpdateOrders,
   type CourseStatus,
   deleteAssessment,
@@ -56,19 +58,37 @@ import {
   updateCourse,
 } from "@/lib/firestore";
 
+function computeBundleEffectiveGrade(a: Assessment): number | null {
+  const items = a.items ?? [];
+  const graded = items
+    .filter((i) => i.grade !== null)
+    .map((i) => i.grade as number);
+  if (graded.length === 0) return null;
+  const n = Math.min(a.countBest ?? graded.length, graded.length);
+  const topN = [...graded].sort((x, y) => y - x).slice(0, n);
+  return topN.reduce((s, g) => s + g, 0) / topN.length;
+}
+
 function computeGrade(assessments: Assessment[]): number | null {
-  const graded = assessments.filter((a) => a.grade !== null);
+  const graded = assessments.filter((a) => {
+    if (!a.type || a.type === "single") return a.grade !== null;
+    return (a.items ?? []).some((i) => i.grade !== null);
+  });
   if (graded.length === 0) return null;
   const totalWeight = graded.reduce((sum, a) => sum + a.weight, 0);
   if (totalWeight === 0) return null;
-  const weightedSum = graded.reduce(
-    (sum, a) => sum + (a.grade as number) * a.weight,
-    0,
-  );
+  const weightedSum = graded.reduce((sum, a) => {
+    if (!a.type || a.type === "single") {
+      return sum + (a.grade as number) * a.weight;
+    }
+    const g = computeBundleEffectiveGrade(a) ?? 0;
+    return sum + g * a.weight;
+  }, 0);
   return weightedSum / totalWeight;
 }
 
 const EMPTY_FORM = { name: "", weight: "", grade: "" };
+const EMPTY_BUNDLE_FORM = { name: "", weight: "", total: "", countBest: "" };
 
 // ─── Animated assessment card ─────────────────────────────────────────────────
 
@@ -169,6 +189,164 @@ function AssessmentCard({
   );
 }
 
+// ─── Bundle card ──────────────────────────────────────────────────────────────
+
+interface BundleCardProps {
+  item: Assessment;
+  flashKey: number;
+  isDragging: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+  onDragStart: (clientY: number, cardClientY: number) => void;
+  onItemLayout: (height: number) => void;
+  onUpdateItemGrade: (itemIdx: number, gradeStr: string) => void;
+}
+
+function BundleCard({
+  item,
+  flashKey,
+  isDragging,
+  onEdit,
+  onDelete,
+  onDragStart,
+  onItemLayout,
+  onUpdateItemGrade,
+}: BundleCardProps) {
+  const [expanded, setExpanded] = useState(false);
+  const localGradesRef = useRef<string[]>(
+    (item.items ?? []).map((i) => (i.grade !== null ? String(i.grade) : "")),
+  );
+  const [localGrades, setLocalGrades] = useState<string[]>(
+    () => localGradesRef.current,
+  );
+
+  useEffect(() => {
+    const synced = (item.items ?? []).map((i) =>
+      i.grade !== null ? String(i.grade) : "",
+    );
+    localGradesRef.current = synced;
+    setLocalGrades(synced);
+  }, [item.items]);
+
+  const flashProgress = useSharedValue(0);
+  const cardRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (flashKey === 0) return;
+    flashProgress.value = withSequence(
+      withTiming(1, { duration: 180 }),
+      withTiming(0, { duration: 520 }),
+    );
+  }, [flashKey]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(
+      flashProgress.value,
+      [0, 1],
+      ["rgba(255,255,255,0.05)", "rgba(167,139,250,0.38)"],
+    ),
+  }));
+
+  const bundleGrade = computeBundleEffectiveGrade(item);
+  const gradedCount = (item.items ?? []).filter((i) => i.grade !== null).length;
+  const totalItems = item.items?.length ?? 0;
+
+  return (
+    <View onLayout={(e) => onItemLayout(e.nativeEvent.layout.height)}>
+      <Animated.View
+        ref={cardRef}
+        style={[
+          styles.assessmentCard,
+          animatedStyle,
+          isDragging && styles.assessmentPlaceholder,
+        ]}
+      >
+        {Platform.OS === "web" && (
+          <View
+            style={[styles.dragHandle, { cursor: "grab" } as any]}
+            {...({
+              onPointerDown: (e: any) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const rect = cardRef.current?.getBoundingClientRect?.();
+                onDragStart(
+                  e.nativeEvent?.clientY ?? e.clientY,
+                  rect?.top ?? e.nativeEvent?.clientY ?? e.clientY,
+                );
+              },
+            } as any)}
+          >
+            <Text style={styles.dragHandleText}>⠿</Text>
+          </View>
+        )}
+        <TouchableOpacity
+          style={styles.assessmentInner}
+          onPress={() => setExpanded((e) => !e)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.assessmentLeft}>
+            <Text style={styles.assessmentName}>{item.name}</Text>
+            <Text style={styles.assessmentWeight}>
+              Weight: {item.weight}% · Top {item.countBest} of {totalItems} ·{" "}
+              {gradedCount}/{totalItems} graded
+            </Text>
+          </View>
+          <View style={styles.assessmentRight}>
+            <Text style={styles.bundleChevron}>{expanded ? "▲" : "▼"}</Text>
+            {bundleGrade !== null ? (
+              <Text style={styles.assessmentGrade}>
+                {bundleGrade.toFixed(1)}%
+              </Text>
+            ) : (
+              <Text style={styles.assessmentPending}>—</Text>
+            )}
+            <TouchableOpacity
+              style={styles.editBundleBtn}
+              onPress={onEdit}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.editBundleBtnText}>✎</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.deleteBtn}
+              onPress={onDelete}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.deleteBtnText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
+      {expanded && (
+        <View style={styles.bundleItemsWrapper}>
+          {(item.items ?? []).map((bi, idx) => (
+            <View key={bi.id} style={styles.bundleItemRow}>
+              <Text style={styles.bundleItemLabel}>Item {idx + 1}</Text>
+              <AppTextInput
+                style={styles.bundleItemInput}
+                placeholder="—"
+                placeholderTextColor={COLORS.textDim}
+                keyboardType="decimal-pad"
+                value={localGrades[idx] ?? ""}
+                onChangeText={(v) => {
+                  const next = [...localGradesRef.current];
+                  next[idx] = v;
+                  localGradesRef.current = next;
+                  setLocalGrades([...next]);
+                }}
+                onBlur={() =>
+                  onUpdateItemGrade(idx, localGradesRef.current[idx] ?? "")
+                }
+              />
+              <Text style={styles.bundleItemPercent}>%</Text>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 export default function CourseDetailScreen() {
   const {
     id,
@@ -197,6 +375,11 @@ export default function CourseDetailScreen() {
   const deletingRef = useRef(false);
   const [flashKeys, setFlashKeys] = useState<Record<string, number>>({});
 
+  const [bundleModalVisible, setBundleModalVisible] = useState(false);
+  const [editingBundleId, setEditingBundleId] = useState<string | null>(null);
+  const [bundleForm, setBundleForm] = useState(EMPTY_BUNDLE_FORM);
+  const [bundleSaving, setBundleSaving] = useState(false);
+
   // ─── Drag-and-drop state ─────────────────────────────────────────────────────
   const [dragIdx, setDragIdx] = useState(-1);
   const [hoverIdx, setHoverIdx] = useState(-1);
@@ -209,6 +392,7 @@ export default function CourseDetailScreen() {
   const listViewRef = useRef<any>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const scoreInputRef = useRef<any>(null);
+  const [gradeInputFocused, setGradeInputFocused] = useState(false);
 
   useEffect(() => {
     if (!id || !uid) return;
@@ -358,13 +542,124 @@ export default function CourseDetailScreen() {
     }
   };
 
+  const openAddBundle = () => {
+    setEditingBundleId(null);
+    setBundleForm(EMPTY_BUNDLE_FORM);
+    setBundleModalVisible(true);
+  };
+
+  const openEditBundle = (a: Assessment) => {
+    setEditingBundleId(a.id);
+    setBundleForm({
+      name: a.name,
+      weight: String(a.weight),
+      total: String(a.items?.length ?? 0),
+      countBest: String(a.countBest ?? ""),
+    });
+    setBundleModalVisible(true);
+  };
+
+  const handleSaveBundle = async () => {
+    const trimmedName = bundleForm.name.trim();
+    if (!trimmedName) {
+      Alert.alert("Validation", "Please enter a name for the bundle.");
+      return;
+    }
+    const weight = parseFloat(bundleForm.weight);
+    if (isNaN(weight) || weight < 0 || weight > 100) {
+      Alert.alert("Validation", "Weight must be a number between 0 and 100.");
+      return;
+    }
+    const total = parseInt(bundleForm.total, 10);
+    if (isNaN(total) || total < 1) {
+      Alert.alert("Validation", "Total items must be at least 1.");
+      return;
+    }
+    const countBest = parseInt(bundleForm.countBest, 10);
+    if (isNaN(countBest) || countBest < 1 || countBest > total) {
+      Alert.alert(
+        "Validation",
+        `"How Many Count" must be between 1 and ${total}.`,
+      );
+      return;
+    }
+    setBundleSaving(true);
+    try {
+      if (editingBundleId) {
+        const existing = assessments.find((a) => a.id === editingBundleId);
+        const existingItems: BundleItem[] = existing?.items ?? [];
+        let newItems: BundleItem[];
+        if (total > existingItems.length) {
+          newItems = [
+            ...existingItems,
+            ...Array.from({ length: total - existingItems.length }, (_, i) => ({
+              id: String(existingItems.length + i),
+              grade: null as null,
+            })),
+          ];
+        } else {
+          newItems = existingItems.slice(0, total);
+        }
+        await updateAssessment(uid, id!, editingBundleId, {
+          name: trimmedName,
+          weight,
+          countBest,
+          items: newItems,
+        });
+      } else {
+        const items: BundleItem[] = Array.from({ length: total }, (_, i) => ({
+          id: String(i),
+          grade: null as null,
+        }));
+        await addAssessment(uid, id!, {
+          name: trimmedName,
+          weight,
+          grade: null,
+          order: assessments.length,
+          type: "bundle",
+          countBest,
+          items,
+        });
+      }
+      setBundleModalVisible(false);
+    } catch {
+      Alert.alert("Error", "Failed to save bundle. Please try again.");
+    } finally {
+      setBundleSaving(false);
+    }
+  };
+
+  const handleUpdateBundleItemGrade = async (
+    bundleId: string,
+    itemIdx: number,
+    gradeStr: string,
+  ) => {
+    const bundle = assessments.find((a) => a.id === bundleId);
+    if (!bundle?.items) return;
+    const parsed = gradeStr.trim() === "" ? null : parseFloat(gradeStr);
+    if (parsed !== null && (isNaN(parsed) || parsed < 0 || parsed > 100))
+      return;
+    const newItems = bundle.items.map((item, i) =>
+      i === itemIdx ? { ...item, grade: parsed } : item,
+    );
+    try {
+      await updateAssessment(uid, id!, bundleId, { items: newItems });
+    } catch {
+      Alert.alert("Error", "Failed to save grade.");
+    }
+  };
+
   const [desiredGrade, setDesiredGrade] = useState("");
+  const [desiredGradeOpen, setDesiredGradeOpen] = useState(false);
   const [weightWarningDismissed, setWeightWarningDismissed] = useState(false);
 
   const calculatedGrade = computeGrade(assessments);
   const totalWeight = assessments.reduce((sum, a) => sum + a.weight, 0);
   const gradedWeight = assessments
-    .filter((a) => a.grade !== null)
+    .filter((a) => {
+      if (!a.type || a.type === "single") return a.grade !== null;
+      return (a.items ?? []).some((i) => i.grade !== null);
+    })
     .reduce((sum, a) => sum + a.weight, 0);
 
   // Re-show the warning whenever the total weight changes
@@ -376,14 +671,22 @@ export default function CourseDetailScreen() {
   const requiredScore = useMemo((): number | null => {
     const desired = parseFloat(desiredGrade);
     if (isNaN(desired) || desired < 0 || desired > 100) return null;
-    const ungradedWeight = assessments
-      .filter((a) => a.grade === null)
+    const gw = assessments
+      .filter((a) => {
+        if (!a.type || a.type === "single") return a.grade !== null;
+        return (a.items ?? []).some((i) => i.grade !== null);
+      })
       .reduce((sum, a) => sum + a.weight, 0);
-    if (ungradedWeight === 0) return null;
-    const currentWeightedSum = assessments
-      .filter((a) => a.grade !== null)
-      .reduce((sum, a) => sum + (a.grade as number) * a.weight, 0);
-    return (desired * 100 - currentWeightedSum) / ungradedWeight;
+    const remainingWeight = 100 - gw;
+    if (remainingWeight <= 0) return null;
+    const currentWeightedSum = assessments.reduce((sum, a) => {
+      if (!a.type || a.type === "single") {
+        return a.grade !== null ? sum + (a.grade as number) * a.weight : sum;
+      }
+      const g = computeBundleEffectiveGrade(a);
+      return g !== null ? sum + g * a.weight : sum;
+    }, 0);
+    return (desired * 100 - currentWeightedSum) / remainingWeight;
   }, [desiredGrade, assessments]);
 
   const moveAssessment = async (index: number, direction: "up" | "down") => {
@@ -504,7 +807,7 @@ export default function CourseDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.maxWidthContent}>
+      <View style={styles.headerWrapper}>
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity
@@ -521,8 +824,14 @@ export default function CourseDetailScreen() {
             >
               <Text style={styles.deleteCourseText}>Delete</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.addBundleButton}
+              onPress={openAddBundle}
+            >
+              <Text style={styles.addBundleButtonText}>+ Bundle</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={styles.addButton} onPress={openAdd}>
-              <Text style={styles.addButtonText}>+ Add</Text>
+              <Text style={styles.addButtonText}>+ Assessment</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -576,58 +885,69 @@ export default function CourseDetailScreen() {
         {/* Desired final grade */}
         {courseStatus === "active" && (
           <View style={styles.desiredCard}>
-            <Text style={styles.desiredTitle}>Desired Final Grade</Text>
-            <View style={styles.desiredRow}>
-              <TextInput
-                style={styles.desiredInput}
-                placeholder="e.g. 85"
-                placeholderTextColor={COLORS.textDim}
-                keyboardType="decimal-pad"
-                value={desiredGrade}
-                onChangeText={setDesiredGrade}
-                maxLength={6}
-              />
-              <Text style={styles.desiredPercent}>%</Text>
-              <View style={styles.desiredResultBox}>
-                {desiredGrade.trim() === "" ? (
-                  <Text style={styles.desiredHint}>Enter a target grade</Text>
-                ) : requiredScore === null ? (
-                  assessments.filter((a) => a.grade === null).length === 0 ? (
-                    <Text style={styles.desiredHint}>
-                      No ungraded assessments. Add and/or leave some assessments
-                      ungraded to calculate required score.
-                    </Text>
+            <TouchableOpacity
+              style={styles.desiredTitleRow}
+              onPress={() => setDesiredGradeOpen((o) => !o)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.desiredTitle}>Desired Final Grade</Text>
+              <Text style={styles.desiredChevron}>
+                {desiredGradeOpen ? "▲" : "▼"}
+              </Text>
+            </TouchableOpacity>
+            {desiredGradeOpen && (
+              <View style={styles.desiredRow}>
+                <AppTextInput
+                  style={styles.desiredInput}
+                  placeholder="e.g. 85"
+                  placeholderTextColor={COLORS.textDim}
+                  keyboardType="decimal-pad"
+                  value={desiredGrade}
+                  onChangeText={setDesiredGrade}
+                  maxLength={6}
+                />
+                <Text style={styles.desiredPercent}>%</Text>
+                <View style={styles.desiredResultBox}>
+                  {desiredGrade.trim() === "" ? (
+                    <Text style={styles.desiredHint}>Enter a target grade</Text>
+                  ) : requiredScore === null ? (
+                    gradedWeight >= 100 ? (
+                      <Text style={styles.desiredHint}>
+                        All assessments fully graded. Add ungraded items to
+                        calculate required score.
+                      </Text>
+                    ) : (
+                      <Text style={styles.desiredHint}>Invalid target</Text>
+                    )
                   ) : (
-                    <Text style={styles.desiredHint}>Invalid target</Text>
-                  )
-                ) : (
-                  <View style={styles.desiredResultInner}>
-                    <Text style={styles.desiredResultLabel}>
-                      Need on remaining
-                    </Text>
-                    <Text
-                      style={[
-                        styles.desiredResultValue,
-                        {
-                          color:
-                            requiredScore > 100
-                              ? COLORS.danger
-                              : requiredScore < 0
-                                ? COLORS.textDim
-                                : COLORS.success,
-                        },
-                      ]}
-                    >
-                      {requiredScore < 0
-                        ? "Already achieved"
-                        : requiredScore > 100
-                          ? `${requiredScore.toFixed(1)}% (not possible)`
-                          : `${requiredScore.toFixed(1)}%`}
-                    </Text>
-                  </View>
-                )}
+                    <View style={styles.desiredResultInner}>
+                      <Text style={styles.desiredResultLabel}>
+                        Need on remaining
+                      </Text>
+                      <Text
+                        style={[
+                          styles.desiredResultValue,
+                          {
+                            color:
+                              requiredScore > 100
+                                ? COLORS.danger
+                                : requiredScore < 0
+                                  ? COLORS.textDim
+                                  : COLORS.success,
+                          },
+                        ]}
+                      >
+                        {requiredScore < 0
+                          ? "Already achieved"
+                          : requiredScore > 100
+                            ? `${requiredScore.toFixed(1)}% (not possible)`
+                            : `${requiredScore.toFixed(1)}%`}
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </View>
-            </View>
+            )}
           </View>
         )}
 
@@ -693,8 +1013,10 @@ export default function CourseDetailScreen() {
           !weightWarningDismissed && (
             <View style={styles.weightWarning}>
               <Text style={styles.weightWarningText}>
-                ⚠ Your assessment weights add up to {totalWeight}%, not 100%.
-                Double-check that all components are entered correctly.
+                ⚠ Your assessment weights add up to {totalWeight}%, not 100%.{" "}
+                {totalWeight < 100
+                  ? `Add more components until they add up to 100%.`
+                  : `Remove or reduce components so they add up to 100%.`}
               </Text>
               <TouchableOpacity
                 onPress={() => setWeightWarningDismissed(true)}
@@ -705,17 +1027,18 @@ export default function CourseDetailScreen() {
               </TouchableOpacity>
             </View>
           )}
-
-        <View ref={listViewRef} style={{ flex: 1 }}>
-          <ScrollView
-            ref={scrollViewRef}
-            contentContainerStyle={styles.listContainer}
-            showsVerticalScrollIndicator={false}
-            scrollEventThrottle={16}
-            onScroll={(e) => {
-              listScrollRef.current = e.nativeEvent.contentOffset.y;
-            }}
-          >
+      </View>
+      <View ref={listViewRef} style={{ flex: 1 }}>
+        <ScrollView
+          ref={scrollViewRef}
+          contentContainerStyle={styles.listContainer}
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScroll={(e) => {
+            listScrollRef.current = e.nativeEvent.contentOffset.y;
+          }}
+        >
+          <View style={styles.maxWidthContent}>
             {displayAssessments.length === 0 ? (
               <View style={styles.emptyContainer}>
                 <Text style={styles.emptyEmoji}>📝</Text>
@@ -731,6 +1054,27 @@ export default function CourseDetailScreen() {
                 );
                 const isDragging =
                   dragIdx !== -1 && item.id === assessments[dragIdx]?.id;
+                if (item.type === "bundle") {
+                  return (
+                    <BundleCard
+                      key={item.id}
+                      item={item}
+                      flashKey={flashKeys[item.id] ?? 0}
+                      isDragging={isDragging}
+                      onEdit={() => openEditBundle(item)}
+                      onDelete={() => handleDelete(item)}
+                      onDragStart={(clientY, cardTop) =>
+                        handleDragStart(assessmentIndex, clientY, cardTop)
+                      }
+                      onItemLayout={(height) => {
+                        itemHeightsRef.current[assessmentIndex] = height;
+                      }}
+                      onUpdateItemGrade={(itemIdx, grade) =>
+                        handleUpdateBundleItemGrade(item.id, itemIdx, grade)
+                      }
+                    />
+                  );
+                }
                 return (
                   <AssessmentCard
                     key={item.id}
@@ -749,8 +1093,8 @@ export default function CourseDetailScreen() {
                 );
               })
             )}
-          </ScrollView>
-        </View>
+          </View>
+        </ScrollView>
       </View>
 
       {/* Add / Edit Modal */}
@@ -770,22 +1114,26 @@ export default function CourseDetailScreen() {
             </Text>
 
             <Text style={styles.fieldLabel}>Name</Text>
-            <TextInput
+            <AppTextInput
               style={styles.input}
               placeholder="e.g. Midterm Exam"
               placeholderTextColor={COLORS.textDim}
               value={form.name}
               onChangeText={(v) => setForm((f) => ({ ...f, name: v }))}
+              returnKeyType="done"
+              onSubmitEditing={handleSave}
             />
 
             <Text style={styles.fieldLabel}>Weight (%)</Text>
-            <TextInput
+            <AppTextInput
               style={styles.input}
               placeholder="e.g. 30"
               placeholderTextColor={COLORS.textDim}
               keyboardType="decimal-pad"
               value={form.weight}
               onChangeText={(v) => setForm((f) => ({ ...f, weight: v }))}
+              returnKeyType="done"
+              onSubmitEditing={handleSave}
             />
 
             <Text style={styles.fieldLabel}>
@@ -794,11 +1142,15 @@ export default function CourseDetailScreen() {
             <TextInput
               ref={scoreInputRef}
               style={styles.input}
-              placeholder="e.g. 85"
+              placeholder={gradeInputFocused ? "" : "e.g. 85"}
               placeholderTextColor={COLORS.textDim}
               keyboardType="decimal-pad"
               value={form.grade}
               onChangeText={(v) => setForm((f) => ({ ...f, grade: v }))}
+              onFocus={() => setGradeInputFocused(true)}
+              onBlur={() => setGradeInputFocused(false)}
+              returnKeyType="done"
+              onSubmitEditing={handleSave}
             />
 
             <View style={styles.modalActions}>
@@ -815,6 +1167,93 @@ export default function CourseDetailScreen() {
               >
                 <Text style={styles.saveBtnText}>
                   {saving ? "Saving..." : editingId ? "Save Changes" : "Add"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Add / Edit Bundle Modal */}
+      <Modal
+        visible={bundleModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setBundleModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>
+              {editingBundleId ? "Edit Bundle" : "Add Bundle"}
+            </Text>
+
+            <Text style={styles.fieldLabel}>Bundle Name</Text>
+            <AppTextInput
+              style={styles.input}
+              placeholder="e.g. Weekly Quizzes"
+              placeholderTextColor={COLORS.textDim}
+              value={bundleForm.name}
+              onChangeText={(v) => setBundleForm((f) => ({ ...f, name: v }))}
+              returnKeyType="next"
+            />
+
+            <Text style={styles.fieldLabel}>Total Weight (%)</Text>
+            <AppTextInput
+              style={styles.input}
+              placeholder="e.g. 20"
+              placeholderTextColor={COLORS.textDim}
+              keyboardType="decimal-pad"
+              value={bundleForm.weight}
+              onChangeText={(v) => setBundleForm((f) => ({ ...f, weight: v }))}
+              returnKeyType="next"
+            />
+
+            <Text style={styles.fieldLabel}>Total Items</Text>
+            <AppTextInput
+              style={styles.input}
+              placeholder="e.g. 12"
+              placeholderTextColor={COLORS.textDim}
+              keyboardType="number-pad"
+              value={bundleForm.total}
+              onChangeText={(v) => setBundleForm((f) => ({ ...f, total: v }))}
+              returnKeyType="next"
+            />
+
+            <Text style={styles.fieldLabel}>How Many Count (Top N)</Text>
+            <AppTextInput
+              style={styles.input}
+              placeholder="e.g. 10"
+              placeholderTextColor={COLORS.textDim}
+              keyboardType="number-pad"
+              value={bundleForm.countBest}
+              onChangeText={(v) =>
+                setBundleForm((f) => ({ ...f, countBest: v }))
+              }
+              returnKeyType="done"
+              onSubmitEditing={handleSaveBundle}
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => setBundleModalVisible(false)}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.saveBtn}
+                onPress={handleSaveBundle}
+                disabled={bundleSaving}
+              >
+                <Text style={styles.saveBtnText}>
+                  {bundleSaving
+                    ? "Saving..."
+                    : editingBundleId
+                      ? "Save Changes"
+                      : "Add Bundle"}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -855,10 +1294,25 @@ export default function CourseDetailScreen() {
                     </Text>
                     <Text style={styles.assessmentWeight}>
                       Weight: {assessments[dragIdx].weight}%
+                      {assessments[dragIdx].type === "bundle" &&
+                        ` · Top ${assessments[dragIdx].countBest} of ${assessments[dragIdx].items?.length ?? 0}`}
                     </Text>
                   </View>
                   <View style={styles.assessmentRight}>
-                    {assessments[dragIdx].grade !== null ? (
+                    {assessments[dragIdx].type === "bundle" ? (
+                      (() => {
+                        const g = computeBundleEffectiveGrade(
+                          assessments[dragIdx],
+                        );
+                        return g !== null ? (
+                          <Text style={styles.assessmentGrade}>
+                            {g.toFixed(1)}%
+                          </Text>
+                        ) : (
+                          <Text style={styles.assessmentPending}>—</Text>
+                        );
+                      })()
+                    ) : assessments[dragIdx].grade !== null ? (
                       <Text style={styles.assessmentGrade}>
                         {assessments[dragIdx].grade!.toFixed(1)}%
                       </Text>
@@ -882,11 +1336,16 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg,
     paddingTop: 40,
   },
-  maxWidthContent: {
-    flex: 1,
+  headerWrapper: {
     width: "100%",
     maxWidth: 800,
     alignSelf: "center",
+  },
+  maxWidthContent: {
+    width: "100%",
+    maxWidth: 800,
+    alignSelf: "center",
+    paddingHorizontal: 16,
   },
   header: {
     flexDirection: "row",
@@ -1025,7 +1484,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   listContainer: {
-    paddingHorizontal: 16,
     paddingBottom: 80,
   },
   assessmentCard: {
@@ -1213,18 +1671,27 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
   },
+  desiredTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
   desiredTitle: {
     color: COLORS.textDim,
     fontSize: 12,
     fontWeight: "600",
     textTransform: "uppercase",
     letterSpacing: 0.5,
-    marginBottom: 12,
+  },
+  desiredChevron: {
+    color: COLORS.textDim,
+    fontSize: 11,
   },
   desiredRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    marginTop: 12,
   },
   desiredInput: {
     backgroundColor: COLORS.inputBg,
@@ -1267,5 +1734,72 @@ const styles = StyleSheet.create({
   desiredResultValue: {
     fontSize: 18,
     fontWeight: "800",
+  },
+  // Bundle
+  bundleChevron: {
+    color: COLORS.textDim,
+    fontSize: 11,
+    marginRight: 2,
+  },
+  editBundleBtn: {
+    padding: 4,
+  },
+  editBundleBtnText: {
+    color: COLORS.accent,
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  bundleItemsWrapper: {
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderTopWidth: 0,
+    borderBottomLeftRadius: 14,
+    borderBottomRightRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 4,
+    marginBottom: 10,
+  },
+  bundleItemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 7,
+    gap: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.06)",
+  },
+  bundleItemLabel: {
+    color: COLORS.textDim,
+    fontSize: 13,
+    flex: 1,
+  },
+  bundleItemInput: {
+    backgroundColor: COLORS.inputBg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    color: COLORS.textMain,
+    fontSize: 14,
+    width: 80,
+    textAlign: "center",
+  },
+  bundleItemPercent: {
+    color: COLORS.textDim,
+    fontSize: 13,
+    width: 14,
+  },
+  addBundleButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(167, 139, 250, 0.45)",
+  },
+  addBundleButtonText: {
+    color: "rgba(167, 139, 250, 0.75)",
+    fontSize: 14,
+    fontWeight: "700",
   },
 });

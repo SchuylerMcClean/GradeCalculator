@@ -26,12 +26,20 @@ export interface Course {
   order?: number; // display order, 0-indexed
 }
 
+export interface BundleItem {
+  id: string;
+  grade: number | null;
+}
+
 export interface Assessment {
   id: string;
   name: string;
   weight: number; // 0–100
-  grade: number | null; // 0–100, null = not yet graded
+  grade: number | null; // 0–100, null = not yet graded (always null for bundles)
   order: number; // display order, 0-indexed
+  type?: "single" | "bundle"; // undefined treated as "single" for backwards compat
+  countBest?: number; // bundle only: top N grades count toward the final score
+  items?: BundleItem[]; // bundle only: individual sub-item grades
 }
 
 // ─── Courses ──────────────────────────────────────────────────────────────────
