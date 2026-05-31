@@ -200,6 +200,7 @@ interface RepeatedAssessmentCardProps {
   onDragStart: (clientY: number, cardClientY: number) => void;
   onItemLayout: (height: number) => void;
   onUpdateItemGrade: (itemIdx: number, gradeStr: string) => void;
+  stickyTop: number;
 }
 
 function RepeatedAssessmentCard({
@@ -211,6 +212,7 @@ function RepeatedAssessmentCard({
   onDragStart,
   onItemLayout,
   onUpdateItemGrade,
+  stickyTop,
 }: RepeatedAssessmentCardProps) {
   const [expanded, setExpanded] = useState(false);
   const localGradesRef = useRef<string[]>(
@@ -253,70 +255,83 @@ function RepeatedAssessmentCard({
 
   return (
     <View onLayout={(e) => onItemLayout(e.nativeEvent.layout.height)}>
-      <Animated.View
-        ref={cardRef}
-        style={[
-          styles.assessmentCard,
-          animatedStyle,
-          isDragging && styles.assessmentPlaceholder,
-        ]}
+      <View
+        style={
+          Platform.OS === "web" && expanded
+            ? {
+                position: "sticky" as any,
+                top: stickyTop,
+                zIndex: 10,
+                backgroundColor: COLORS.bg,
+              }
+            : undefined
+        }
       >
-        {Platform.OS === "web" && (
-          <View
-            style={[styles.dragHandle, { cursor: "grab" } as any]}
-            {...({
-              onPointerDown: (e: any) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const rect = cardRef.current?.getBoundingClientRect?.();
-                onDragStart(
-                  e.nativeEvent?.clientY ?? e.clientY,
-                  rect?.top ?? e.nativeEvent?.clientY ?? e.clientY,
-                );
-              },
-            } as any)}
-          >
-            <Text style={styles.dragHandleText}>⠿</Text>
-          </View>
-        )}
-        <TouchableOpacity
-          style={styles.assessmentInner}
-          onPress={() => setExpanded((e) => !e)}
-          activeOpacity={0.7}
+        <Animated.View
+          ref={cardRef}
+          style={[
+            styles.assessmentCard,
+            animatedStyle,
+            isDragging && styles.assessmentPlaceholder,
+          ]}
         >
-          <View style={styles.assessmentLeft}>
-            <Text style={styles.assessmentName}>{item.name}</Text>
-            <Text style={styles.assessmentWeight}>
-              Weight: {item.weight}% · Top {item.countBest} of {totalItems} ·{" "}
-              {gradedCount}/{totalItems} graded
-            </Text>
-          </View>
-          <View style={styles.assessmentRight}>
-            <Text style={styles.repeatedChevron}>{expanded ? "▲" : "▼"}</Text>
-            {repeatedGrade !== null ? (
-              <Text style={styles.assessmentGrade}>
-                {repeatedGrade.toFixed(1)}%
+          {Platform.OS === "web" && (
+            <View
+              style={[styles.dragHandle, { cursor: "grab" } as any]}
+              {...({
+                onPointerDown: (e: any) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const rect = cardRef.current?.getBoundingClientRect?.();
+                  onDragStart(
+                    e.nativeEvent?.clientY ?? e.clientY,
+                    rect?.top ?? e.nativeEvent?.clientY ?? e.clientY,
+                  );
+                },
+              } as any)}
+            >
+              <Text style={styles.dragHandleText}>⠿</Text>
+            </View>
+          )}
+          <TouchableOpacity
+            style={styles.assessmentInner}
+            onPress={() => setExpanded((e) => !e)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.assessmentLeft}>
+              <Text style={styles.assessmentName}>{item.name}</Text>
+              <Text style={styles.assessmentWeight}>
+                Weight: {item.weight}% · Top {item.countBest} of {totalItems} ·{" "}
+                {gradedCount}/{totalItems} graded
               </Text>
-            ) : (
-              <Text style={styles.assessmentPending}>—</Text>
-            )}
-            <TouchableOpacity
-              style={styles.editRepeatedBtn}
-              onPress={onEdit}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Text style={styles.editRepeatedBtnText}>✎</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.deleteBtn}
-              onPress={onDelete}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Text style={styles.deleteBtnText}>✕</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Animated.View>
+            </View>
+            <View style={styles.assessmentRight}>
+              <Text style={styles.repeatedChevron}>{expanded ? "▲" : "▼"}</Text>
+              {repeatedGrade !== null ? (
+                <Text style={styles.assessmentGrade}>
+                  {repeatedGrade.toFixed(1)}%
+                </Text>
+              ) : (
+                <Text style={styles.assessmentPending}>—</Text>
+              )}
+              <TouchableOpacity
+                style={styles.editRepeatedBtn}
+                onPress={onEdit}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.editRepeatedBtnText}>✎</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.deleteBtn}
+                onPress={onDelete}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.deleteBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
       {expanded && (
         <View style={styles.repeatedItemsWrapper}>
           {(item.items ?? []).map((bi, idx) => (
@@ -381,6 +396,7 @@ export default function CourseDetailScreen() {
   );
   const [repeatedForm, setRepeatedForm] = useState(EMPTY_REPEATED_FORM);
   const [repeatedSaving, setRepeatedSaving] = useState(false);
+  const [summaryHeight, setSummaryHeight] = useState(0);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [dropdownTop, setDropdownTop] = useState(56);
   const addButtonRef = useRef<any>(null);
@@ -396,6 +412,7 @@ export default function CourseDetailScreen() {
   const itemHeightsRef = useRef<number[]>([]);
   const listTopRef = useRef(0);
   const listScrollRef = useRef(0);
+  const dragScrollStartRef = useRef(0);
   const listViewRef = useRef<any>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const scoreInputRef = useRef<any>(null);
@@ -534,11 +551,12 @@ export default function CourseDetailScreen() {
 
   const openEditRepeated = (a: Assessment) => {
     setEditingRepeatedId(a.id);
+    const itemCount = a.items?.length ?? 0;
     setRepeatedForm({
       name: a.name,
       weight: String(a.weight),
-      total: String(a.items?.length ?? 0),
-      countBest: String(a.countBest ?? ""),
+      total: String(itemCount),
+      countBest: String(itemCount - (a.countBest ?? itemCount)),
     });
     setRepeatedModalVisible(true);
   };
@@ -559,14 +577,17 @@ export default function CourseDetailScreen() {
       Alert.alert("Validation", "Total items must be at least 1.");
       return;
     }
-    const countBest = parseInt(repeatedForm.countBest, 10);
-    if (isNaN(countBest) || countBest < 1 || countBest > total) {
+    const dropped = parseInt(repeatedForm.countBest, 10);
+    if (isNaN(dropped) || dropped < 0 || dropped >= total) {
       Alert.alert(
         "Validation",
-        `"How Many Count" must be between 1 and ${total}.`,
+        dropped >= total
+          ? `Cannot drop all ${total} items. Enter a value between 0 and ${total - 1}.`
+          : "How Many Dropped cannot be negative.",
       );
       return;
     }
+    const countBest = total - dropped;
     setRepeatedSaving(true);
     try {
       if (editingRepeatedId) {
@@ -692,6 +713,7 @@ export default function CourseDetailScreen() {
 
       const offset = clientY - cardTop;
       const listRect = listViewRef.current?.getBoundingClientRect?.();
+      dragScrollStartRef.current = listScrollRef.current;
       listTopRef.current = listRect?.top ?? 0;
 
       dragIdxRef.current = index;
@@ -704,7 +726,10 @@ export default function CourseDetailScreen() {
       const MARGIN = 10;
 
       const computeHover = (y: number): number => {
-        const relY = y - listTopRef.current + listScrollRef.current;
+        const relY =
+          y -
+          listTopRef.current +
+          (listScrollRef.current - dragScrollStartRef.current);
         let accY = 0;
         for (let i = 0; i < itemCount; i++) {
           const h = itemHeightsRef.current[i] ?? 66;
@@ -774,251 +799,276 @@ export default function CourseDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.headerWrapper}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.backBtn}
-          >
-            <Text style={styles.backBtnText}>‹ Back</Text>
-          </TouchableOpacity>
-          <View style={styles.headerRight}>
+      <ScrollView
+        ref={scrollViewRef}
+        style={{ flex: 1 }}
+        stickyHeaderIndices={Platform.OS !== "web" ? [1] : undefined}
+        contentContainerStyle={styles.listContainer}
+        showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={(e) => {
+          listScrollRef.current = e.nativeEvent.contentOffset.y;
+        }}
+      >
+        {/* [0] Course header — scrolls away */}
+        <View style={styles.headerWrapper}>
+          {/* Header */}
+          <View style={styles.header}>
             <TouchableOpacity
-              style={styles.deleteCourseBtnHeader}
-              onPress={handleDeleteCourse}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              onPress={() => router.back()}
+              style={styles.backBtn}
             >
-              <Text style={styles.deleteCourseText}>Delete</Text>
+              <Text style={styles.backBtnText}>‹ Back</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              ref={addButtonRef}
-              style={styles.addButton}
-              onPress={() => {
-                if (addButtonRef.current?.measure) {
-                  addButtonRef.current.measure(
-                    (
-                      _x: number,
-                      _y: number,
-                      _w: number,
-                      h: number,
-                      _px: number,
-                      py: number,
-                    ) => {
-                      setDropdownTop(py + h + 6);
-                    },
-                  );
-                }
-                setAddMenuOpen((o) => !o);
-              }}
-            >
-              <Text style={styles.addButtonText}>+ Add ▾</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <Text style={styles.courseName}>{courseName}</Text>
-
-        {/* Status selector */}
-        <View style={styles.statusRow}>
-          {(["active", "completed", "planned"] as CourseStatus[]).map((s) => (
-            <TouchableOpacity
-              key={s}
-              style={[
-                styles.statusChip,
-                courseStatus === s && styles.statusChipActive,
-                courseStatus === s &&
-                  s === "active" && {
-                    borderColor: COLORS.success,
-                    backgroundColor: "rgba(74, 222, 128, 0.15)",
-                  },
-                courseStatus === s &&
-                  s === "completed" && {
-                    borderColor: COLORS.accent,
-                    backgroundColor: "rgba(167, 139, 250, 0.15)",
-                  },
-                courseStatus === s &&
-                  s === "planned" && {
-                    borderColor: COLORS.textDim,
-                    backgroundColor: "rgba(148, 163, 184, 0.15)",
-                  },
-              ]}
-              onPress={() => handleStatusChange(s)}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.statusChipText,
-                  courseStatus === s &&
-                    s === "active" && { color: COLORS.success },
-                  courseStatus === s &&
-                    s === "completed" && { color: COLORS.accent },
-                  courseStatus === s &&
-                    s === "planned" && { color: COLORS.textDim },
-                ]}
-              >
-                {s.charAt(0).toUpperCase() + s.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Desired final grade */}
-        {courseStatus === "active" && (
-          <View style={styles.desiredCard}>
-            <TouchableOpacity
-              style={styles.desiredTitleRow}
-              onPress={() => setDesiredGradeOpen((o) => !o)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.desiredTitle}>Desired Final Grade</Text>
-              <Text style={styles.desiredChevron}>
-                {desiredGradeOpen ? "▲" : "▼"}
-              </Text>
-            </TouchableOpacity>
-            {desiredGradeOpen && (
-              <View style={styles.desiredRow}>
-                <AppTextInput
-                  style={styles.desiredInput}
-                  placeholder="e.g. 85"
-                  placeholderTextColor={COLORS.textDim}
-                  keyboardType="decimal-pad"
-                  value={desiredGrade}
-                  onChangeText={setDesiredGrade}
-                  maxLength={6}
-                />
-                <Text style={styles.desiredPercent}>%</Text>
-                <View style={styles.desiredResultBox}>
-                  {desiredGrade.trim() === "" ? (
-                    <Text style={styles.desiredHint}>Enter a target grade</Text>
-                  ) : requiredScore === null ? (
-                    gradedWeight >= 100 ? (
-                      <Text style={styles.desiredHint}>
-                        All assessments fully graded. Add ungraded items to
-                        calculate required score.
-                      </Text>
-                    ) : (
-                      <Text style={styles.desiredHint}>Invalid target</Text>
-                    )
-                  ) : (
-                    <View style={styles.desiredResultInner}>
-                      <Text style={styles.desiredResultLabel}>
-                        Need on remaining
-                      </Text>
-                      <Text
-                        style={[
-                          styles.desiredResultValue,
-                          {
-                            color:
-                              requiredScore > 100
-                                ? COLORS.danger
-                                : requiredScore < 0
-                                  ? COLORS.textDim
-                                  : COLORS.success,
-                          },
-                        ]}
-                      >
-                        {requiredScore < 0
-                          ? "Already achieved"
-                          : requiredScore > 100
-                            ? `${requiredScore.toFixed(1)}% (not possible)`
-                            : `${requiredScore.toFixed(1)}%`}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-            )}
-          </View>
-        )}
-
-        <Text style={styles.subtitle}>Assessment Components</Text>
-
-        {/* Grade summary */}
-        <View style={styles.summaryCard}>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Calculated Grade</Text>
-            <Text
-              style={[
-                styles.summaryValue,
-                {
-                  color:
-                    calculatedGrade === null
-                      ? COLORS.textDim
-                      : calculatedGrade < 50
-                        ? COLORS.danger
-                        : calculatedGrade < 80
-                          ? "#facc15"
-                          : COLORS.success,
-                },
-              ]}
-            >
-              {calculatedGrade !== null
-                ? `${calculatedGrade.toFixed(1)}%`
-                : "No grades yet"}
-            </Text>
-          </View>
-          <View style={styles.summaryDivider} />
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Graded Weight</Text>
-            <Text
-              style={[
-                styles.summaryValue,
-                {
-                  color:
-                    gradedWeight === totalWeight
-                      ? COLORS.success
-                      : COLORS.accent,
-                },
-              ]}
-            >
-              {gradedWeight}%
-            </Text>
-          </View>
-          <View style={styles.summaryDivider} />
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Total Weight</Text>
-            <Text
-              style={[
-                styles.summaryValue,
-                { color: totalWeight === 100 ? COLORS.success : COLORS.danger },
-              ]}
-            >
-              {totalWeight}%
-            </Text>
-          </View>
-        </View>
-
-        {totalWeight !== 100 &&
-          assessments.length > 0 &&
-          !weightWarningDismissed && (
-            <View style={styles.weightWarning}>
-              <Text style={styles.weightWarningText}>
-                ⚠ Your assessment weights add up to {totalWeight}%, not 100%.{" "}
-                {totalWeight < 100
-                  ? `Add more components until they add up to 100%.`
-                  : `Remove or reduce components so they add up to 100%.`}
-              </Text>
+            <View style={styles.headerRight}>
               <TouchableOpacity
-                onPress={() => setWeightWarningDismissed(true)}
+                style={styles.deleteCourseBtnHeader}
+                onPress={handleDeleteCourse}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                style={styles.weightWarningClose}
               >
-                <Text style={styles.weightWarningCloseText}>✕</Text>
+                <Text style={styles.deleteCourseText}>Delete</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                ref={addButtonRef}
+                style={styles.addButton}
+                onPress={() => {
+                  if (addButtonRef.current?.measure) {
+                    addButtonRef.current.measure(
+                      (
+                        _x: number,
+                        _y: number,
+                        _w: number,
+                        h: number,
+                        _px: number,
+                        py: number,
+                      ) => {
+                        setDropdownTop(py + h + 6);
+                      },
+                    );
+                  }
+                  setAddMenuOpen((o) => !o);
+                }}
+              >
+                <Text style={styles.addButtonText}>+ Add ▾</Text>
               </TouchableOpacity>
             </View>
+          </View>
+
+          <Text style={styles.courseName}>{courseName}</Text>
+
+          {/* Status selector */}
+          <View style={styles.statusRow}>
+            {(["active", "completed", "planned"] as CourseStatus[]).map((s) => (
+              <TouchableOpacity
+                key={s}
+                style={[
+                  styles.statusChip,
+                  courseStatus === s && styles.statusChipActive,
+                  courseStatus === s &&
+                    s === "active" && {
+                      borderColor: COLORS.success,
+                      backgroundColor: "rgba(74, 222, 128, 0.15)",
+                    },
+                  courseStatus === s &&
+                    s === "completed" && {
+                      borderColor: COLORS.accent,
+                      backgroundColor: "rgba(167, 139, 250, 0.15)",
+                    },
+                  courseStatus === s &&
+                    s === "planned" && {
+                      borderColor: COLORS.textDim,
+                      backgroundColor: "rgba(148, 163, 184, 0.15)",
+                    },
+                ]}
+                onPress={() => handleStatusChange(s)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.statusChipText,
+                    courseStatus === s &&
+                      s === "active" && { color: COLORS.success },
+                    courseStatus === s &&
+                      s === "completed" && { color: COLORS.accent },
+                    courseStatus === s &&
+                      s === "planned" && { color: COLORS.textDim },
+                  ]}
+                >
+                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Desired final grade */}
+          {courseStatus === "active" && (
+            <View style={styles.desiredCard}>
+              <TouchableOpacity
+                style={styles.desiredTitleRow}
+                onPress={() => setDesiredGradeOpen((o) => !o)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.desiredTitle}>Desired Final Grade</Text>
+                <Text style={styles.desiredChevron}>
+                  {desiredGradeOpen ? "▲" : "▼"}
+                </Text>
+              </TouchableOpacity>
+              {desiredGradeOpen && (
+                <View style={styles.desiredRow}>
+                  <AppTextInput
+                    style={styles.desiredInput}
+                    placeholder="e.g. 85"
+                    placeholderTextColor={COLORS.textDim}
+                    keyboardType="decimal-pad"
+                    value={desiredGrade}
+                    onChangeText={setDesiredGrade}
+                    maxLength={6}
+                  />
+                  <Text style={styles.desiredPercent}>%</Text>
+                  <View style={styles.desiredResultBox}>
+                    {desiredGrade.trim() === "" ? (
+                      <Text style={styles.desiredHint}>
+                        Enter a target grade
+                      </Text>
+                    ) : requiredScore === null ? (
+                      gradedWeight >= 100 ? (
+                        <Text style={styles.desiredHint}>
+                          All assessments graded.
+                        </Text>
+                      ) : (
+                        <Text style={styles.desiredHint}>Invalid target</Text>
+                      )
+                    ) : (
+                      <View style={styles.desiredResultInner}>
+                        <Text style={styles.desiredResultLabel}>
+                          Need on remaining
+                        </Text>
+                        <Text
+                          style={[
+                            styles.desiredResultValue,
+                            {
+                              color:
+                                requiredScore > 100
+                                  ? COLORS.danger
+                                  : requiredScore < 0
+                                    ? COLORS.textDim
+                                    : COLORS.success,
+                            },
+                          ]}
+                        >
+                          {requiredScore < 0
+                            ? "Already achieved"
+                            : requiredScore > 100
+                              ? `${requiredScore.toFixed(1)}% (not possible)`
+                              : `${requiredScore.toFixed(1)}%`}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              )}
+            </View>
           )}
-      </View>
-      <View ref={listViewRef} style={{ flex: 1 }}>
-        <ScrollView
-          ref={scrollViewRef}
-          contentContainerStyle={styles.listContainer}
-          showsVerticalScrollIndicator={false}
-          scrollEventThrottle={16}
-          onScroll={(e) => {
-            listScrollRef.current = e.nativeEvent.contentOffset.y;
-          }}
+
+          <Text style={styles.subtitle}>Assessment Components</Text>
+        </View>
+
+        {/* [1] Grade summary — sticky */}
+        <View
+          style={[
+            styles.summarySticky,
+            Platform.OS === "web" && {
+              position: "sticky" as any,
+              top: 0,
+              zIndex: 20,
+            },
+          ]}
+          onLayout={(e) => setSummaryHeight(e.nativeEvent.layout.height)}
         >
+          <View style={styles.summaryMaxWidth}>
+            {/* Grade summary */}
+            <View style={styles.summaryCard}>
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryLabel}>Calculated Grade</Text>
+                <Text
+                  style={[
+                    styles.summaryValue,
+                    {
+                      color:
+                        calculatedGrade === null
+                          ? COLORS.textDim
+                          : calculatedGrade < 50
+                            ? COLORS.danger
+                            : calculatedGrade < 80
+                              ? "#facc15"
+                              : COLORS.success,
+                    },
+                  ]}
+                >
+                  {calculatedGrade !== null
+                    ? `${calculatedGrade.toFixed(1)}%`
+                    : "No grades yet"}
+                </Text>
+              </View>
+              <View style={styles.summaryDivider} />
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryLabel}>Graded Weight</Text>
+                <Text
+                  style={[
+                    styles.summaryValue,
+                    {
+                      color:
+                        gradedWeight === totalWeight
+                          ? COLORS.success
+                          : COLORS.accent,
+                    },
+                  ]}
+                >
+                  {gradedWeight}%
+                </Text>
+              </View>
+              <View style={styles.summaryDivider} />
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryLabel}>Total Weight</Text>
+                <Text
+                  style={[
+                    styles.summaryValue,
+                    {
+                      color:
+                        totalWeight === 100 ? COLORS.success : COLORS.danger,
+                    },
+                  ]}
+                >
+                  {totalWeight}%
+                </Text>
+              </View>
+            </View>
+
+            {totalWeight !== 100 &&
+              assessments.length > 0 &&
+              !weightWarningDismissed && (
+                <View style={styles.weightWarning}>
+                  <Text style={styles.weightWarningText}>
+                    ⚠ Your assessment weights add up to {totalWeight}%, not
+                    100%.{" "}
+                    {totalWeight < 100
+                      ? `Add more components until they add up to 100%.`
+                      : `Remove or reduce components so they add up to 100%.`}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => setWeightWarningDismissed(true)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={styles.weightWarningClose}
+                  >
+                    <Text style={styles.weightWarningCloseText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+          </View>
+        </View>
+
+        {/* [2] Assessments list */}
+        <View ref={listViewRef}>
           <View style={styles.maxWidthContent}>
             {displayAssessments.length === 0 ? (
               <View style={styles.emptyContainer}>
@@ -1053,6 +1103,7 @@ export default function CourseDetailScreen() {
                       onUpdateItemGrade={(itemIdx, grade) =>
                         handleUpdateRepeatedItemGrade(item.id, itemIdx, grade)
                       }
+                      stickyTop={summaryHeight}
                     />
                   );
                 }
@@ -1075,8 +1126,8 @@ export default function CourseDetailScreen() {
               })
             )}
           </View>
-        </ScrollView>
-      </View>
+        </View>
+      </ScrollView>
 
       {/* Add / Edit Modal */}
       <Modal
@@ -1206,11 +1257,10 @@ export default function CourseDetailScreen() {
               onChangeText={(v) => setRepeatedForm((f) => ({ ...f, total: v }))}
               returnKeyType="next"
             />
-
-            <Text style={styles.fieldLabel}>How Many Count (Top N)</Text>
+            <Text style={styles.fieldLabel}>How Many Dropped</Text>
             <AppTextInput
               style={styles.input}
-              placeholder="e.g. 10"
+              placeholder="e.g. 2"
               placeholderTextColor={COLORS.textDim}
               keyboardType="number-pad"
               value={repeatedForm.countBest}
@@ -1274,7 +1324,7 @@ export default function CourseDetailScreen() {
               activeOpacity={0.7}
             >
               <Text style={styles.addDropdownItemText}>
-                Add single assessment
+                Add Single Assessment
               </Text>
             </TouchableOpacity>
             <View style={styles.addDropdownDivider} />
@@ -1287,7 +1337,7 @@ export default function CourseDetailScreen() {
               activeOpacity={0.7}
             >
               <Text style={styles.addDropdownItemText}>
-                Add repeating assessment
+                Add Repeating Assessment
               </Text>
             </TouchableOpacity>
           </View>
@@ -1516,6 +1566,15 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     paddingBottom: 80,
+  },
+  summarySticky: {
+    width: "100%",
+    backgroundColor: COLORS.bg,
+  },
+  summaryMaxWidth: {
+    maxWidth: 900,
+    alignSelf: "center",
+    width: "100%",
   },
   assessmentCard: {
     flexDirection: "row",
