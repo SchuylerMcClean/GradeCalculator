@@ -1338,12 +1338,12 @@ const styles = StyleSheet.create({
   },
   headerWrapper: {
     width: "100%",
-    maxWidth: 800,
+    maxWidth: 900,
     alignSelf: "center",
   },
   maxWidthContent: {
     width: "100%",
-    maxWidth: 800,
+    maxWidth: 900,
     alignSelf: "center",
     paddingHorizontal: 16,
   },
