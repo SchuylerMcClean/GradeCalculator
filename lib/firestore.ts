@@ -21,6 +21,7 @@ export interface Course {
   id: string;
   name: string;
   instructor?: string;
+  semester?: string;
   grade?: number; // computed weighted average, written back after assessment changes
   status: CourseStatus;
   order?: number; // display order, 0-indexed

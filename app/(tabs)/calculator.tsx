@@ -159,7 +159,7 @@ export default function HomeScreen() {
       >
         <View style={styles.maxWidthContent}>
           <View style={styles.header}>
-            <Text style={styles.title}>Grade Calculator</Text>
+            <Text style={styles.title}>Quick Calculator</Text>
             <TouchableOpacity style={styles.addButton} onPress={addRow}>
               <Text style={styles.addButtonText}>+ Add Component</Text>
             </TouchableOpacity>

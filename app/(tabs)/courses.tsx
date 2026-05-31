@@ -20,6 +20,7 @@ import {
   deleteCourse,
   initCourseOrder,
   subscribeToCourses,
+  updateCourse,
 } from "@/lib/firestore";
 import { useRouter } from "expo-router";
 import { AppTextInput } from "@/components/app-text-input";
@@ -48,6 +49,7 @@ const STATUS_OPTIONS: CourseStatus[] = ["active", "completed", "planned"];
 const EMPTY_FORM = {
   name: "",
   instructor: "",
+  semester: "",
   status: "active" as CourseStatus,
 };
 
@@ -71,6 +73,7 @@ interface CourseCardProps {
   isDragging: boolean;
   onPress: () => void;
   onDelete: () => void;
+  onEdit: () => void;
   onDragStart: (clientY: number, cardClientY: number) => void;
   onItemLayout: (height: number) => void;
 }
@@ -80,6 +83,7 @@ function CourseCard({
   isDragging,
   onPress,
   onDelete,
+  onEdit,
   onDragStart,
   onItemLayout,
 }: CourseCardProps) {
@@ -127,6 +131,13 @@ function CourseCard({
                 </Text>
               </View>
               <TouchableOpacity
+                onPress={onEdit}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={styles.editBtn}
+              >
+                <Text style={styles.editBtnText}>✎</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
                 onPress={onDelete}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 style={styles.deleteBtn}
@@ -139,6 +150,9 @@ function CourseCard({
             <Text style={styles.instructorText}>
               Instructor: {item.instructor}
             </Text>
+          )}
+          {item.semester && (
+            <Text style={styles.semesterText}>{item.semester}</Text>
           )}
           <View style={styles.courseDetails}>
             {item.grade !== undefined && (
@@ -163,8 +177,21 @@ export default function CoursesPage() {
 
   // Add-course modal
   const [modalVisible, setModalVisible] = useState(false);
+  const [editingCourse, setEditingCourse] = useState<Course | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [showNewSemesterInput, setShowNewSemesterInput] = useState(false);
+  const [selectedSemester, setSelectedSemester] = useState<string>("all");
+
+  const semesters = useMemo(
+    () =>
+      [
+        ...new Set(
+          courses.map((c) => c.semester).filter((s): s is string => !!s),
+        ),
+      ].sort(),
+    [courses],
+  );
 
   // ─── Drag state ───────────────────────────────────────────────────────────────
   const [dragIdx, setDragIdx] = useState(-1);
@@ -202,14 +229,26 @@ export default function CoursesPage() {
     }
     setSaving(true);
     try {
-      await addCourse(uid, {
-        name: form.name.trim(),
-        instructor: form.instructor.trim() || undefined,
-        status: form.status,
-        order: courses.length,
-      });
+      if (editingCourse) {
+        await updateCourse(uid, editingCourse.id, {
+          name: form.name.trim(),
+          instructor: form.instructor.trim() || undefined,
+          semester: form.semester.trim() || undefined,
+          status: form.status,
+        });
+      } else {
+        await addCourse(uid, {
+          name: form.name.trim(),
+          ...(form.instructor.trim() && { instructor: form.instructor.trim() }),
+          ...(form.semester.trim() && { semester: form.semester.trim() }),
+          status: form.status,
+          order: courses.length,
+        });
+      }
       setModalVisible(false);
+      setEditingCourse(null);
       setForm(EMPTY_FORM);
+      setShowNewSemesterInput(false);
     } catch (e) {
       Alert.alert("Error", "Failed to add course. Please try again.");
     } finally {
@@ -242,13 +281,17 @@ export default function CoursesPage() {
   };
 
   const displayCourses = useMemo(() => {
-    if (dragIdx === -1 || hoverIdx === -1 || hoverIdx === dragIdx)
-      return courses;
-    const arr = [...courses];
-    const [moved] = arr.splice(dragIdx, 1);
-    arr.splice(hoverIdx, 0, moved);
-    return arr;
-  }, [courses, dragIdx, hoverIdx]);
+    const base = (() => {
+      if (dragIdx === -1 || hoverIdx === -1 || hoverIdx === dragIdx)
+        return courses;
+      const arr = [...courses];
+      const [moved] = arr.splice(dragIdx, 1);
+      arr.splice(hoverIdx, 0, moved);
+      return arr;
+    })();
+    if (selectedSemester === "all") return base;
+    return base.filter((c) => c.semester === selectedSemester);
+  }, [courses, dragIdx, hoverIdx, selectedSemester]);
 
   const handleDragStart = useCallback(
     (index: number, clientY: number, cardTop: number) => {
@@ -344,6 +387,49 @@ export default function CoursesPage() {
             </TouchableOpacity>
           </View>
         </View>
+        {semesters.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterBar}
+          >
+            <TouchableOpacity
+              style={[
+                styles.filterTag,
+                selectedSemester === "all" && styles.filterTagActive,
+              ]}
+              onPress={() => setSelectedSemester("all")}
+            >
+              <Text
+                style={[
+                  styles.filterTagText,
+                  selectedSemester === "all" && styles.filterTagTextActive,
+                ]}
+              >
+                All
+              </Text>
+            </TouchableOpacity>
+            {semesters.map((s) => (
+              <TouchableOpacity
+                key={s}
+                style={[
+                  styles.filterTag,
+                  selectedSemester === s && styles.filterTagActive,
+                ]}
+                onPress={() => setSelectedSemester(s)}
+              >
+                <Text
+                  style={[
+                    styles.filterTagText,
+                    selectedSemester === s && styles.filterTagTextActive,
+                  ]}
+                >
+                  {s}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
       </View>
       <View ref={listViewRef} style={{ flex: 1 }}>
         <ScrollView
@@ -376,6 +462,17 @@ export default function CoursesPage() {
                     isDragging={isDragging}
                     onPress={() => handleCoursePress(item)}
                     onDelete={() => handleDeleteCourse(item)}
+                    onEdit={() => {
+                      setEditingCourse(item);
+                      setForm({
+                        name: item.name,
+                        instructor: item.instructor ?? "",
+                        semester: item.semester ?? "",
+                        status: item.status,
+                      });
+                      setShowNewSemesterInput(false);
+                      setModalVisible(true);
+                    }}
                     onDragStart={(clientY, cardTop) =>
                       handleDragStart(courseIndex, clientY, cardTop)
                     }
@@ -402,8 +499,9 @@ export default function CoursesPage() {
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Add Course</Text>
-
+            <Text style={styles.modalTitle}>
+              {editingCourse ? "Edit Course" : "Add Course"}
+            </Text>
             <Text style={styles.fieldLabel}>Course Name</Text>
             <AppTextInput
               style={styles.input}
@@ -412,7 +510,6 @@ export default function CoursesPage() {
               value={form.name}
               onChangeText={(v) => setForm((f) => ({ ...f, name: v }))}
             />
-
             <Text style={styles.fieldLabel}>Instructor (optional)</Text>
             <AppTextInput
               style={styles.input}
@@ -422,6 +519,83 @@ export default function CoursesPage() {
               onChangeText={(v) => setForm((f) => ({ ...f, instructor: v }))}
             />
 
+            <Text style={styles.fieldLabel}>Semester (optional)</Text>
+            <View style={styles.semesterChipsRow}>
+              <TouchableOpacity
+                style={[
+                  styles.semesterChip,
+                  form.semester === "" && styles.semesterChipActive,
+                ]}
+                onPress={() => {
+                  setForm((f) => ({ ...f, semester: "" }));
+                  setShowNewSemesterInput(false);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.semesterChipText,
+                    form.semester === "" && styles.semesterChipTextActive,
+                  ]}
+                >
+                  None
+                </Text>
+              </TouchableOpacity>
+              {semesters.map((s) => (
+                <TouchableOpacity
+                  key={s}
+                  style={[
+                    styles.semesterChip,
+                    form.semester === s &&
+                      !showNewSemesterInput &&
+                      styles.semesterChipActive,
+                  ]}
+                  onPress={() => {
+                    setForm((f) => ({ ...f, semester: s }));
+                    setShowNewSemesterInput(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.semesterChipText,
+                      form.semester === s &&
+                        !showNewSemesterInput &&
+                        styles.semesterChipTextActive,
+                    ]}
+                  >
+                    {s}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity
+                style={[
+                  styles.semesterChip,
+                  showNewSemesterInput && styles.semesterChipActive,
+                ]}
+                onPress={() => {
+                  setShowNewSemesterInput(true);
+                  setForm((f) => ({ ...f, semester: "" }));
+                }}
+              >
+                <Text
+                  style={[
+                    styles.semesterChipText,
+                    showNewSemesterInput && styles.semesterChipTextActive,
+                  ]}
+                >
+                  + New
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {showNewSemesterInput && (
+              <AppTextInput
+                style={[styles.input, { marginTop: 8 }]}
+                placeholder="e.g. Fall 2026"
+                placeholderTextColor={COLORS.textDim}
+                value={form.semester}
+                onChangeText={(v) => setForm((f) => ({ ...f, semester: v }))}
+                autoFocus
+              />
+            )}
             <Text style={styles.fieldLabel}>Status</Text>
             <View style={styles.statusRow}>
               {STATUS_OPTIONS.map((s) => (
@@ -444,13 +618,14 @@ export default function CoursesPage() {
                 </TouchableOpacity>
               ))}
             </View>
-
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={styles.cancelBtn}
                 onPress={() => {
                   setModalVisible(false);
+                  setEditingCourse(null);
                   setForm(EMPTY_FORM);
+                  setShowNewSemesterInput(false);
                 }}
               >
                 <Text style={styles.cancelBtnText}>Cancel</Text>
@@ -461,7 +636,11 @@ export default function CoursesPage() {
                 disabled={saving}
               >
                 <Text style={styles.saveBtnText}>
-                  {saving ? "Saving..." : "Add Course"}
+                  {saving
+                    ? "Saving..."
+                    : editingCourse
+                      ? "Save Changes"
+                      : "Add Course"}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -546,7 +725,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    marginBottom: 18,
+    marginBottom: 10,
   },
   headerTitle: {
     color: COLORS.textMain,
@@ -571,6 +750,32 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
   },
+  filterBar: {
+    flexDirection: "row",
+    paddingHorizontal: 20,
+    paddingBottom: 14,
+    gap: 8,
+  },
+  filterTag: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: "transparent",
+  },
+  filterTagActive: {
+    borderColor: COLORS.accent,
+    backgroundColor: "rgba(167, 139, 250, 0.15)",
+  },
+  filterTagText: {
+    color: COLORS.textDim,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  filterTagTextActive: {
+    color: COLORS.accent,
+  },
 
   listContainer: {
     paddingBottom: 80,
@@ -582,12 +787,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: 16,
-    marginBottom: 12,
+    marginBottom: 10,
     overflow: "hidden",
   },
   courseCardInner: {
     flex: 1,
-    padding: 16,
+    padding: 8,
   },
   coursePlaceholder: {
     opacity: 0.3,
@@ -619,12 +824,21 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: 2,
   },
   courseHeaderRight: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+  },
+  editBtn: {
+    padding: 4,
+    marginRight: 4,
+  },
+  editBtnText: {
+    color: COLORS.accent,
+    fontSize: 14,
+    fontWeight: "700",
   },
   deleteBtn: {
     padding: 4,
@@ -654,10 +868,18 @@ const styles = StyleSheet.create({
   instructorText: {
     fontSize: 13,
     color: COLORS.textDim,
-    marginBottom: 6,
+    marginBottom: 3,
+  },
+  semesterText: {
+    fontSize: 12,
+    color: COLORS.accent,
+    fontWeight: "600",
+    marginBottom: 1,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
   },
   courseDetails: {
-    marginTop: 6,
+    marginTop: 1,
   },
   detailText: {
     fontSize: 13,
@@ -667,7 +889,7 @@ const styles = StyleSheet.create({
   gradeContainer: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 6,
+    marginTop: 1,
   },
   gradeLabel: {
     fontSize: 13,
@@ -711,6 +933,31 @@ const styles = StyleSheet.create({
     color: COLORS.textDim,
     textAlign: "center",
     paddingHorizontal: 32,
+  },
+  semesterChipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 2,
+  },
+  semesterChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  semesterChipActive: {
+    borderColor: COLORS.accent,
+    backgroundColor: "rgba(167, 139, 250, 0.15)",
+  },
+  semesterChipText: {
+    color: COLORS.textDim,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  semesterChipTextActive: {
+    color: COLORS.accent,
   },
   // Modal
   modalOverlay: {

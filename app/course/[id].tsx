@@ -30,6 +30,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 import Animated, {
@@ -53,12 +54,11 @@ import {
   deleteCourse,
   initAssessmentOrder,
   subscribeToAssessments,
-  swapAssessmentOrder,
   updateAssessment,
   updateCourse,
 } from "@/lib/firestore";
 
-function computeBundleEffectiveGrade(a: Assessment): number | null {
+function computeRepeatedGrade(a: Assessment): number | null {
   const items = a.items ?? [];
   const graded = items
     .filter((i) => i.grade !== null)
@@ -81,14 +81,14 @@ function computeGrade(assessments: Assessment[]): number | null {
     if (!a.type || a.type === "single") {
       return sum + (a.grade as number) * a.weight;
     }
-    const g = computeBundleEffectiveGrade(a) ?? 0;
+    const g = computeRepeatedGrade(a) ?? 0;
     return sum + g * a.weight;
   }, 0);
   return weightedSum / totalWeight;
 }
 
 const EMPTY_FORM = { name: "", weight: "", grade: "" };
-const EMPTY_BUNDLE_FORM = { name: "", weight: "", total: "", countBest: "" };
+const EMPTY_REPEATED_FORM = { name: "", weight: "", total: "", countBest: "" };
 
 // ─── Animated assessment card ─────────────────────────────────────────────────
 
@@ -189,9 +189,9 @@ function AssessmentCard({
   );
 }
 
-// ─── Bundle card ──────────────────────────────────────────────────────────────
+// ─── Repeated assessment card ──────────────────────────────────────────────────
 
-interface BundleCardProps {
+interface RepeatedAssessmentCardProps {
   item: Assessment;
   flashKey: number;
   isDragging: boolean;
@@ -202,7 +202,7 @@ interface BundleCardProps {
   onUpdateItemGrade: (itemIdx: number, gradeStr: string) => void;
 }
 
-function BundleCard({
+function RepeatedAssessmentCard({
   item,
   flashKey,
   isDragging,
@@ -211,7 +211,7 @@ function BundleCard({
   onDragStart,
   onItemLayout,
   onUpdateItemGrade,
-}: BundleCardProps) {
+}: RepeatedAssessmentCardProps) {
   const [expanded, setExpanded] = useState(false);
   const localGradesRef = useRef<string[]>(
     (item.items ?? []).map((i) => (i.grade !== null ? String(i.grade) : "")),
@@ -247,7 +247,7 @@ function BundleCard({
     ),
   }));
 
-  const bundleGrade = computeBundleEffectiveGrade(item);
+  const repeatedGrade = computeRepeatedGrade(item);
   const gradedCount = (item.items ?? []).filter((i) => i.grade !== null).length;
   const totalItems = item.items?.length ?? 0;
 
@@ -292,20 +292,20 @@ function BundleCard({
             </Text>
           </View>
           <View style={styles.assessmentRight}>
-            <Text style={styles.bundleChevron}>{expanded ? "▲" : "▼"}</Text>
-            {bundleGrade !== null ? (
+            <Text style={styles.repeatedChevron}>{expanded ? "▲" : "▼"}</Text>
+            {repeatedGrade !== null ? (
               <Text style={styles.assessmentGrade}>
-                {bundleGrade.toFixed(1)}%
+                {repeatedGrade.toFixed(1)}%
               </Text>
             ) : (
               <Text style={styles.assessmentPending}>—</Text>
             )}
             <TouchableOpacity
-              style={styles.editBundleBtn}
+              style={styles.editRepeatedBtn}
               onPress={onEdit}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Text style={styles.editBundleBtnText}>✎</Text>
+              <Text style={styles.editRepeatedBtnText}>✎</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.deleteBtn}
@@ -318,12 +318,12 @@ function BundleCard({
         </TouchableOpacity>
       </Animated.View>
       {expanded && (
-        <View style={styles.bundleItemsWrapper}>
+        <View style={styles.repeatedItemsWrapper}>
           {(item.items ?? []).map((bi, idx) => (
-            <View key={bi.id} style={styles.bundleItemRow}>
-              <Text style={styles.bundleItemLabel}>Item {idx + 1}</Text>
+            <View key={bi.id} style={styles.repeatedItemRow}>
+              <Text style={styles.repeatedItemLabel}>Item {idx + 1}</Text>
               <AppTextInput
-                style={styles.bundleItemInput}
+                style={styles.repeatedItemInput}
                 placeholder="—"
                 placeholderTextColor={COLORS.textDim}
                 keyboardType="decimal-pad"
@@ -338,7 +338,7 @@ function BundleCard({
                   onUpdateItemGrade(idx, localGradesRef.current[idx] ?? "")
                 }
               />
-              <Text style={styles.bundleItemPercent}>%</Text>
+              <Text style={styles.repeatedItemPercent}>%</Text>
             </View>
           ))}
         </View>
@@ -375,10 +375,17 @@ export default function CourseDetailScreen() {
   const deletingRef = useRef(false);
   const [flashKeys, setFlashKeys] = useState<Record<string, number>>({});
 
-  const [bundleModalVisible, setBundleModalVisible] = useState(false);
-  const [editingBundleId, setEditingBundleId] = useState<string | null>(null);
-  const [bundleForm, setBundleForm] = useState(EMPTY_BUNDLE_FORM);
-  const [bundleSaving, setBundleSaving] = useState(false);
+  const [repeatedModalVisible, setRepeatedModalVisible] = useState(false);
+  const [editingRepeatedId, setEditingRepeatedId] = useState<string | null>(
+    null,
+  );
+  const [repeatedForm, setRepeatedForm] = useState(EMPTY_REPEATED_FORM);
+  const [repeatedSaving, setRepeatedSaving] = useState(false);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [dropdownTop, setDropdownTop] = useState(56);
+  const addButtonRef = useRef<any>(null);
+  const { width: screenWidth } = useWindowDimensions();
+  const dropdownRight = Math.max(20, (screenWidth - 900) / 2 + 20);
 
   // ─── Drag-and-drop state ─────────────────────────────────────────────────────
   const [dragIdx, setDragIdx] = useState(-1);
@@ -413,24 +420,17 @@ export default function CourseDetailScreen() {
   }, [assessments, id, uid, loading]);
 
   const handleDeleteCourse = async () => {
-    console.log("[DELETE COURSE] Confirming for course:", id, courseName);
     const confirmed = await confirmAction(
       "Delete Course",
       `Remove "${courseName}" and all its assessments? This cannot be undone.`,
     );
-    if (!confirmed) {
-      console.log("[DELETE COURSE] Cancelled");
-      return;
-    }
-    console.log("[DELETE COURSE] Confirmed, calling deleteCourse(", id, ")");
+    if (!confirmed) return;
     deletingRef.current = true;
     try {
       await deleteCourse(uid, id!);
-      console.log("[DELETE COURSE] Success, navigating to courses tab");
       router.replace("/(tabs)/courses" as any);
     } catch (e) {
       deletingRef.current = false;
-      console.error("[DELETE COURSE] Error:", e);
       Alert.alert("Error", "Failed to delete course. Please try again.");
     }
   };
@@ -514,68 +514,52 @@ export default function CourseDetailScreen() {
   };
 
   const handleDelete = async (assessment: Assessment) => {
-    console.log(
-      "[DELETE ASSESSMENT] Confirming for:",
-      assessment.id,
-      assessment.name,
-    );
     const confirmed = await confirmAction(
       "Delete Assessment",
       `Remove "${assessment.name}" from this course?`,
     );
-    if (!confirmed) {
-      console.log("[DELETE ASSESSMENT] Cancelled");
-      return;
-    }
-    console.log(
-      "[DELETE ASSESSMENT] Confirmed, calling deleteAssessment(",
-      id,
-      assessment.id,
-      ")",
-    );
+    if (!confirmed) return;
     try {
       await deleteAssessment(uid, id!, assessment.id);
-      console.log("[DELETE ASSESSMENT] Success:", assessment.id);
-    } catch (e) {
-      console.error("[DELETE ASSESSMENT] Error:", e);
+    } catch {
       Alert.alert("Error", "Failed to delete assessment.");
     }
   };
 
-  const openAddBundle = () => {
-    setEditingBundleId(null);
-    setBundleForm(EMPTY_BUNDLE_FORM);
-    setBundleModalVisible(true);
+  const openAddRepeated = () => {
+    setEditingRepeatedId(null);
+    setRepeatedForm(EMPTY_REPEATED_FORM);
+    setRepeatedModalVisible(true);
   };
 
-  const openEditBundle = (a: Assessment) => {
-    setEditingBundleId(a.id);
-    setBundleForm({
+  const openEditRepeated = (a: Assessment) => {
+    setEditingRepeatedId(a.id);
+    setRepeatedForm({
       name: a.name,
       weight: String(a.weight),
       total: String(a.items?.length ?? 0),
       countBest: String(a.countBest ?? ""),
     });
-    setBundleModalVisible(true);
+    setRepeatedModalVisible(true);
   };
 
-  const handleSaveBundle = async () => {
-    const trimmedName = bundleForm.name.trim();
+  const handleSaveRepeated = async () => {
+    const trimmedName = repeatedForm.name.trim();
     if (!trimmedName) {
-      Alert.alert("Validation", "Please enter a name for the bundle.");
+      Alert.alert("Validation", "Please enter a name.");
       return;
     }
-    const weight = parseFloat(bundleForm.weight);
+    const weight = parseFloat(repeatedForm.weight);
     if (isNaN(weight) || weight < 0 || weight > 100) {
       Alert.alert("Validation", "Weight must be a number between 0 and 100.");
       return;
     }
-    const total = parseInt(bundleForm.total, 10);
+    const total = parseInt(repeatedForm.total, 10);
     if (isNaN(total) || total < 1) {
       Alert.alert("Validation", "Total items must be at least 1.");
       return;
     }
-    const countBest = parseInt(bundleForm.countBest, 10);
+    const countBest = parseInt(repeatedForm.countBest, 10);
     if (isNaN(countBest) || countBest < 1 || countBest > total) {
       Alert.alert(
         "Validation",
@@ -583,10 +567,10 @@ export default function CourseDetailScreen() {
       );
       return;
     }
-    setBundleSaving(true);
+    setRepeatedSaving(true);
     try {
-      if (editingBundleId) {
-        const existing = assessments.find((a) => a.id === editingBundleId);
+      if (editingRepeatedId) {
+        const existing = assessments.find((a) => a.id === editingRepeatedId);
         const existingItems: BundleItem[] = existing?.items ?? [];
         let newItems: BundleItem[];
         if (total > existingItems.length) {
@@ -600,7 +584,7 @@ export default function CourseDetailScreen() {
         } else {
           newItems = existingItems.slice(0, total);
         }
-        await updateAssessment(uid, id!, editingBundleId, {
+        await updateAssessment(uid, id!, editingRepeatedId, {
           name: trimmedName,
           weight,
           countBest,
@@ -621,15 +605,15 @@ export default function CourseDetailScreen() {
           items,
         });
       }
-      setBundleModalVisible(false);
+      setRepeatedModalVisible(false);
     } catch {
-      Alert.alert("Error", "Failed to save bundle. Please try again.");
+      Alert.alert("Error", "Failed to save. Please try again.");
     } finally {
-      setBundleSaving(false);
+      setRepeatedSaving(false);
     }
   };
 
-  const handleUpdateBundleItemGrade = async (
+  const handleUpdateRepeatedItemGrade = async (
     bundleId: string,
     itemIdx: number,
     gradeStr: string,
@@ -683,28 +667,11 @@ export default function CourseDetailScreen() {
       if (!a.type || a.type === "single") {
         return a.grade !== null ? sum + (a.grade as number) * a.weight : sum;
       }
-      const g = computeBundleEffectiveGrade(a);
+      const g = computeRepeatedGrade(a);
       return g !== null ? sum + g * a.weight : sum;
     }, 0);
     return (desired * 100 - currentWeightedSum) / remainingWeight;
   }, [desiredGrade, assessments]);
-
-  const moveAssessment = async (index: number, direction: "up" | "down") => {
-    const targetIndex = direction === "up" ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= assessments.length) return;
-    const a = assessments[index];
-    const b = assessments[targetIndex];
-    setFlashKeys((prev) => ({
-      ...prev,
-      [a.id]: (prev[a.id] ?? 0) + 1,
-      [b.id]: (prev[b.id] ?? 0) + 1,
-    }));
-    try {
-      await swapAssessmentOrder(uid, id!, a.id, a.order, b.id, b.order);
-    } catch (e) {
-      Alert.alert("Error", "Failed to reorder assessments.");
-    }
-  };
 
   // ─── Drag helpers ─────────────────────────────────────────────────────────────
 
@@ -825,13 +792,27 @@ export default function CourseDetailScreen() {
               <Text style={styles.deleteCourseText}>Delete</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.addBundleButton}
-              onPress={openAddBundle}
+              ref={addButtonRef}
+              style={styles.addButton}
+              onPress={() => {
+                if (addButtonRef.current?.measure) {
+                  addButtonRef.current.measure(
+                    (
+                      _x: number,
+                      _y: number,
+                      _w: number,
+                      h: number,
+                      _px: number,
+                      py: number,
+                    ) => {
+                      setDropdownTop(py + h + 6);
+                    },
+                  );
+                }
+                setAddMenuOpen((o) => !o);
+              }}
             >
-              <Text style={styles.addBundleButtonText}>+ Bundle</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.addButton} onPress={openAdd}>
-              <Text style={styles.addButtonText}>+ Assessment</Text>
+              <Text style={styles.addButtonText}>+ Add ▾</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1056,12 +1037,12 @@ export default function CourseDetailScreen() {
                   dragIdx !== -1 && item.id === assessments[dragIdx]?.id;
                 if (item.type === "bundle") {
                   return (
-                    <BundleCard
+                    <RepeatedAssessmentCard
                       key={item.id}
                       item={item}
                       flashKey={flashKeys[item.id] ?? 0}
                       isDragging={isDragging}
-                      onEdit={() => openEditBundle(item)}
+                      onEdit={() => openEditRepeated(item)}
                       onDelete={() => handleDelete(item)}
                       onDragStart={(clientY, cardTop) =>
                         handleDragStart(assessmentIndex, clientY, cardTop)
@@ -1070,7 +1051,7 @@ export default function CourseDetailScreen() {
                         itemHeightsRef.current[assessmentIndex] = height;
                       }}
                       onUpdateItemGrade={(itemIdx, grade) =>
-                        handleUpdateBundleItemGrade(item.id, itemIdx, grade)
+                        handleUpdateRepeatedItemGrade(item.id, itemIdx, grade)
                       }
                     />
                   );
@@ -1174,12 +1155,12 @@ export default function CourseDetailScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Add / Edit Bundle Modal */}
+      {/* Add / Edit Repeated Assessment Modal */}
       <Modal
-        visible={bundleModalVisible}
+        visible={repeatedModalVisible}
         transparent
         animationType="slide"
-        onRequestClose={() => setBundleModalVisible(false)}
+        onRequestClose={() => setRepeatedModalVisible(false)}
       >
         <KeyboardAvoidingView
           style={styles.modalOverlay}
@@ -1187,16 +1168,18 @@ export default function CourseDetailScreen() {
         >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
-              {editingBundleId ? "Edit Bundle" : "Add Bundle"}
+              {editingRepeatedId
+                ? "Edit Repeated Assessment"
+                : "Add Repeated Assessment"}
             </Text>
 
-            <Text style={styles.fieldLabel}>Bundle Name</Text>
+            <Text style={styles.fieldLabel}>Name</Text>
             <AppTextInput
               style={styles.input}
               placeholder="e.g. Weekly Quizzes"
               placeholderTextColor={COLORS.textDim}
-              value={bundleForm.name}
-              onChangeText={(v) => setBundleForm((f) => ({ ...f, name: v }))}
+              value={repeatedForm.name}
+              onChangeText={(v) => setRepeatedForm((f) => ({ ...f, name: v }))}
               returnKeyType="next"
             />
 
@@ -1206,8 +1189,10 @@ export default function CourseDetailScreen() {
               placeholder="e.g. 20"
               placeholderTextColor={COLORS.textDim}
               keyboardType="decimal-pad"
-              value={bundleForm.weight}
-              onChangeText={(v) => setBundleForm((f) => ({ ...f, weight: v }))}
+              value={repeatedForm.weight}
+              onChangeText={(v) =>
+                setRepeatedForm((f) => ({ ...f, weight: v }))
+              }
               returnKeyType="next"
             />
 
@@ -1217,8 +1202,8 @@ export default function CourseDetailScreen() {
               placeholder="e.g. 12"
               placeholderTextColor={COLORS.textDim}
               keyboardType="number-pad"
-              value={bundleForm.total}
-              onChangeText={(v) => setBundleForm((f) => ({ ...f, total: v }))}
+              value={repeatedForm.total}
+              onChangeText={(v) => setRepeatedForm((f) => ({ ...f, total: v }))}
               returnKeyType="next"
             />
 
@@ -1228,37 +1213,85 @@ export default function CourseDetailScreen() {
               placeholder="e.g. 10"
               placeholderTextColor={COLORS.textDim}
               keyboardType="number-pad"
-              value={bundleForm.countBest}
+              value={repeatedForm.countBest}
               onChangeText={(v) =>
-                setBundleForm((f) => ({ ...f, countBest: v }))
+                setRepeatedForm((f) => ({ ...f, countBest: v }))
               }
               returnKeyType="done"
-              onSubmitEditing={handleSaveBundle}
+              onSubmitEditing={handleSaveRepeated}
             />
 
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={styles.cancelBtn}
-                onPress={() => setBundleModalVisible(false)}
+                onPress={() => setRepeatedModalVisible(false)}
               >
                 <Text style={styles.cancelBtnText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.saveBtn}
-                onPress={handleSaveBundle}
-                disabled={bundleSaving}
+                onPress={handleSaveRepeated}
+                disabled={repeatedSaving}
               >
                 <Text style={styles.saveBtnText}>
-                  {bundleSaving
+                  {repeatedSaving
                     ? "Saving..."
-                    : editingBundleId
+                    : editingRepeatedId
                       ? "Save Changes"
-                      : "Add Bundle"}
+                      : "Add"}
                 </Text>
               </TouchableOpacity>
             </View>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Add assessment dropdown */}
+      <Modal
+        visible={addMenuOpen}
+        transparent
+        animationType="none"
+        onRequestClose={() => setAddMenuOpen(false)}
+      >
+        <View style={StyleSheet.absoluteFillObject}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFillObject}
+            onPress={() => setAddMenuOpen(false)}
+            activeOpacity={1}
+          />
+          <View
+            style={[
+              styles.addDropdown,
+              { right: dropdownRight, top: dropdownTop },
+            ]}
+          >
+            <TouchableOpacity
+              style={styles.addDropdownItem}
+              onPress={() => {
+                setAddMenuOpen(false);
+                openAdd();
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.addDropdownItemText}>
+                Add single assessment
+              </Text>
+            </TouchableOpacity>
+            <View style={styles.addDropdownDivider} />
+            <TouchableOpacity
+              style={styles.addDropdownItem}
+              onPress={() => {
+                setAddMenuOpen(false);
+                openAddRepeated();
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.addDropdownItemText}>
+                Add repeating assessment
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
 
       {/* Drag ghost — floats above everything while dragging */}
@@ -1301,9 +1334,7 @@ export default function CourseDetailScreen() {
                   <View style={styles.assessmentRight}>
                     {assessments[dragIdx].type === "bundle" ? (
                       (() => {
-                        const g = computeBundleEffectiveGrade(
-                          assessments[dragIdx],
-                        );
+                        const g = computeRepeatedGrade(assessments[dragIdx]);
                         return g !== null ? (
                           <Text style={styles.assessmentGrade}>
                             {g.toFixed(1)}%
@@ -1736,20 +1767,20 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   // Bundle
-  bundleChevron: {
+  repeatedChevron: {
     color: COLORS.textDim,
     fontSize: 11,
     marginRight: 2,
   },
-  editBundleBtn: {
+  editRepeatedBtn: {
     padding: 4,
   },
-  editBundleBtnText: {
+  editRepeatedBtnText: {
     color: COLORS.accent,
     fontSize: 15,
     fontWeight: "700",
   },
-  bundleItemsWrapper: {
+  repeatedItemsWrapper: {
     backgroundColor: "rgba(255,255,255,0.03)",
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -1760,7 +1791,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     marginBottom: 10,
   },
-  bundleItemRow: {
+  repeatedItemRow: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 7,
@@ -1768,12 +1799,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.06)",
   },
-  bundleItemLabel: {
+  repeatedItemLabel: {
     color: COLORS.textDim,
     fontSize: 13,
     flex: 1,
   },
-  bundleItemInput: {
+  repeatedItemInput: {
     backgroundColor: COLORS.inputBg,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -1785,21 +1816,37 @@ const styles = StyleSheet.create({
     width: 80,
     textAlign: "center",
   },
-  bundleItemPercent: {
+  repeatedItemPercent: {
     color: COLORS.textDim,
     fontSize: 13,
     width: 14,
   },
-  addBundleButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 12,
+  addDropdown: {
+    position: "absolute",
+    top: 56, // overridden at runtime via dropdownTop
+    right: 20, // overridden at runtime via dropdownRight
+    backgroundColor: "#0f172a",
     borderWidth: 1,
-    borderColor: "rgba(167, 139, 250, 0.45)",
+    borderColor: COLORS.border,
+    borderRadius: 14,
+    overflow: "hidden",
+    minWidth: 220,
+    zIndex: 1000,
+    ...(Platform.OS === "web"
+      ? ({ boxShadow: "0 8px 32px rgba(0,0,0,0.55)" } as any)
+      : {}),
   },
-  addBundleButtonText: {
-    color: "rgba(167, 139, 250, 0.75)",
+  addDropdownItem: {
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+  },
+  addDropdownItemText: {
+    color: COLORS.textMain,
     fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "600",
+  },
+  addDropdownDivider: {
+    height: 1,
+    backgroundColor: COLORS.border,
   },
 });
