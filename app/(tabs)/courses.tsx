@@ -509,6 +509,7 @@ export default function CoursesPage() {
               placeholderTextColor={COLORS.textDim}
               value={form.name}
               onChangeText={(v) => setForm((f) => ({ ...f, name: v }))}
+              maxLength={75}
             />
             <Text style={styles.fieldLabel}>Instructor (optional)</Text>
             <AppTextInput
@@ -517,6 +518,7 @@ export default function CoursesPage() {
               placeholderTextColor={COLORS.textDim}
               value={form.instructor}
               onChangeText={(v) => setForm((f) => ({ ...f, instructor: v }))}
+              maxLength={75}
             />
 
             <Text style={styles.fieldLabel}>Semester (optional)</Text>

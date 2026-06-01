@@ -13,6 +13,7 @@ import { StatusBar } from "expo-status-bar";
 
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { confirmAction } from "@/lib/confirm";
 import { auth } from "@/lib/firebase";
 
 const COLORS = {
@@ -57,6 +58,12 @@ function BrowserTabBar() {
   }
 
   const handleSignOut = async () => {
+    const confirmed = await confirmAction(
+      "Sign Out",
+      "Are you sure you want to sign out?",
+      "Sign Out",
+    );
+    if (!confirmed) return;
     await signOut(auth);
     router.replace("/(auth)/login" as any);
   };

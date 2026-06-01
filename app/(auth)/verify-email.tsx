@@ -29,6 +29,7 @@ export default function VerifyEmailScreen() {
   const [checking, setChecking] = useState(false);
   const [resending, setResending] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(false);
+  const [notVerifiedError, setNotVerifiedError] = useState(false);
 
   const handleCheckVerification = async () => {
     if (!auth.currentUser) {
@@ -42,10 +43,7 @@ export default function VerifyEmailScreen() {
         // Auth state will update and index.tsx will redirect to tabs
         router.replace("/");
       } else {
-        Alert.alert(
-          "Not Verified Yet",
-          "Your email has not been verified yet. Please check your inbox and click the verification link.",
-        );
+        setNotVerifiedError(true);
       }
     } catch (err: any) {
       console.error(
@@ -68,6 +66,7 @@ export default function VerifyEmailScreen() {
     try {
       await sendEmailVerification(auth.currentUser);
       setResendCooldown(true);
+      setNotVerifiedError(false);
       // Prevent resend spam — re-enable after 60 seconds
       setTimeout(() => setResendCooldown(false), 60_000);
       Alert.alert("Email Sent", "A new verification email has been sent.");
@@ -105,6 +104,18 @@ export default function VerifyEmailScreen() {
             Click the link in that email, then come back and tap the button
             below to continue.
           </Text>
+          <Text style={styles.spamNote}>
+            Can't find it? Check your spam or junk folder.
+          </Text>
+
+          {notVerifiedError && (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorText}>
+                Your email hasn't been verified yet. Please click the link in
+                your inbox and try again.
+              </Text>
+            </View>
+          )}
 
           <TouchableOpacity
             style={[styles.primaryBtn, checking && styles.btnDisabled]}
@@ -206,7 +217,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: "center",
     lineHeight: 22,
+    marginBottom: 10,
+  },
+  spamNote: {
+    color: COLORS.textDim,
+    fontSize: 12,
+    textAlign: "center",
     marginBottom: 28,
+    opacity: 0.7,
   },
   primaryBtn: {
     width: "100%",
@@ -248,5 +266,20 @@ const styles = StyleSheet.create({
   linkAccent: {
     color: COLORS.accent,
     fontWeight: "600",
+  },
+  errorBanner: {
+    backgroundColor: "rgba(248, 113, 113, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(248, 113, 113, 0.4)",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 16,
+    width: "100%",
+  },
+  errorText: {
+    color: "#f87171",
+    fontSize: 13,
+    textAlign: "center",
   },
 });

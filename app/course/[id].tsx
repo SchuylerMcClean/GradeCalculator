@@ -49,11 +49,13 @@ import {
   type Assessment,
   type BundleItem,
   batchUpdateOrders,
+  type Course,
   type CourseStatus,
   deleteAssessment,
   deleteCourse,
   initAssessmentOrder,
   subscribeToAssessments,
+  subscribeToCourse,
   updateAssessment,
   updateCourse,
 } from "@/lib/firestore";
@@ -376,7 +378,9 @@ export default function CourseDetailScreen() {
   const { user } = useAuth();
   const uid = user?.uid ?? "";
 
-  const courseName = name ?? "Course";
+  // Seed display values from URL params immediately so there's no blank flash
+  // on navigation, then override with authoritative Firestore values once loaded.
+  const [courseName, setCourseName] = useState(name ?? "Course");
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [loading, setLoading] = useState(true);
   const [courseStatus, setCourseStatus] = useState<CourseStatus>(
@@ -417,6 +421,19 @@ export default function CourseDetailScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const scoreInputRef = useRef<any>(null);
   const [gradeInputFocused, setGradeInputFocused] = useState(false);
+
+  useEffect(() => {
+    if (!id || !uid) return;
+    return subscribeToCourse(uid, id, (course: Course | null) => {
+      if (!course) {
+        // Course doesn't exist or doesn't belong to this user — redirect away
+        router.replace("/(tabs)/courses" as any);
+        return;
+      }
+      setCourseName(course.name);
+      setCourseStatus(course.status);
+    });
+  }, [id, uid]);
 
   useEffect(() => {
     if (!id || !uid) return;
@@ -515,6 +532,14 @@ export default function CourseDetailScreen() {
           grade,
         });
       } else {
+        if (assessments.length >= 50) {
+          Alert.alert(
+            "Limit Reached",
+            "You can have at most 50 assessments per course.",
+          );
+          setSaving(false);
+          return;
+        }
         await addAssessment(uid, id!, {
           name: trimmedName,
           weight,
@@ -590,6 +615,14 @@ export default function CourseDetailScreen() {
     const countBest = total - dropped;
     setRepeatedSaving(true);
     try {
+      if (!editingRepeatedId && assessments.length >= 50) {
+        Alert.alert(
+          "Limit Reached",
+          "You can have at most 50 assessments per course.",
+        );
+        setRepeatedSaving(false);
+        return;
+      }
       if (editingRepeatedId) {
         const existing = assessments.find((a) => a.id === editingRepeatedId);
         const existingItems: BundleItem[] = existing?.items ?? [];
@@ -642,7 +675,7 @@ export default function CourseDetailScreen() {
     const bundle = assessments.find((a) => a.id === bundleId);
     if (!bundle?.items) return;
     const parsed = gradeStr.trim() === "" ? null : parseFloat(gradeStr);
-    if (parsed !== null && (isNaN(parsed) || parsed < 0 || parsed > 100))
+    if (parsed !== null && (isNaN(parsed) || parsed < -50 || parsed > 150))
       return;
     const newItems = bundle.items.map((item, i) =>
       i === itemIdx ? { ...item, grade: parsed } : item,
@@ -1152,6 +1185,7 @@ export default function CourseDetailScreen() {
               placeholderTextColor={COLORS.textDim}
               value={form.name}
               onChangeText={(v) => setForm((f) => ({ ...f, name: v }))}
+              maxLength={30}
               returnKeyType="done"
               onSubmitEditing={handleSave}
             />
@@ -1231,6 +1265,7 @@ export default function CourseDetailScreen() {
               placeholderTextColor={COLORS.textDim}
               value={repeatedForm.name}
               onChangeText={(v) => setRepeatedForm((f) => ({ ...f, name: v }))}
+              maxLength={30}
               returnKeyType="next"
             />
 

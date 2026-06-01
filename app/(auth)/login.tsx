@@ -5,7 +5,6 @@ import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
@@ -32,15 +31,17 @@ export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [passwordPlaceholderVisible, setPasswordPlaceholderVisible] =
     useState(true);
   const passwordRef = useRef<any>(null);
 
   const handleLogin = async () => {
     if (!email.trim() || !password) {
-      Alert.alert("Validation", "Please enter your email and password.");
+      setError("Please enter your email and password.");
       return;
     }
+    setError("");
     setLoading(true);
     try {
       const credential = await signInWithEmailAndPassword(
@@ -50,21 +51,22 @@ export default function LoginScreen() {
       );
       if (!credential.user.emailVerified) {
         await signOut(auth);
-        Alert.alert(
-          "Email Not Verified",
-          "Please verify your email address before signing in. Check your inbox for the verification link.",
+        setError(
+          "Your email address hasn't been verified yet. Please check your inbox for the verification link.",
         );
         return;
       }
       router.replace("/(tabs)/calculator" as any);
     } catch (e: any) {
       const msg =
-        e.code === "auth/invalid-credential" ||
-        e.code === "auth/user-not-found" ||
-        e.code === "auth/wrong-password"
-          ? "Invalid email or password."
-          : "Sign in failed. Please try again.";
-      Alert.alert("Error", msg);
+        e.code === "auth/too-many-requests"
+          ? "Too many sign-in attempts. Please wait a few minutes before trying again."
+          : e.code === "auth/invalid-credential" ||
+              e.code === "auth/user-not-found" ||
+              e.code === "auth/wrong-password"
+            ? "Incorrect email or password. Please check your details and try again."
+            : "Sign in failed. Please try again.";
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -84,12 +86,16 @@ export default function LoginScreen() {
           <AppTextInput
             style={styles.input}
             value={email}
-            onChangeText={setEmail}
+            onChangeText={(v) => {
+              setEmail(v);
+              setError("");
+            }}
             placeholder="you@example.com"
             placeholderTextColor={COLORS.textDim}
             autoCapitalize="none"
             keyboardType="email-address"
             autoComplete="email"
+            maxLength={100}
             returnKeyType="next"
             onSubmitEditing={() => passwordRef.current?.focus()}
             blurOnSubmit={false}
@@ -100,7 +106,11 @@ export default function LoginScreen() {
             ref={passwordRef}
             style={styles.input}
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(v) => {
+              setPassword(v);
+              setError("");
+            }}
+            maxLength={100}
             placeholder={passwordPlaceholderVisible ? "••••••••" : ""}
             placeholderTextColor={COLORS.textDim}
             secureTextEntry
@@ -110,6 +120,12 @@ export default function LoginScreen() {
             onBlur={() => setPasswordPlaceholderVisible(true)}
             onSubmitEditing={handleLogin}
           />
+
+          {!!error && (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          )}
 
           <TouchableOpacity
             style={[styles.primaryBtn, loading && styles.btnDisabled]}
@@ -216,5 +232,19 @@ const styles = StyleSheet.create({
   linkAccent: {
     color: COLORS.accent,
     fontWeight: "600",
+  },
+  errorBanner: {
+    backgroundColor: "rgba(248, 113, 113, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(248, 113, 113, 0.4)",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 16,
+  },
+  errorText: {
+    color: COLORS.danger,
+    fontSize: 13,
+    textAlign: "center",
   },
 });

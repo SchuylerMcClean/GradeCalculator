@@ -9,7 +9,6 @@ import {
 import React, { useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
@@ -24,6 +23,7 @@ const COLORS = {
   card: "rgba(255, 255, 255, 0.05)",
   border: "rgba(255, 255, 255, 0.12)",
   accent: "#a78bfa",
+  danger: "#f87171",
   textMain: "#f8fafc",
   textDim: "#94a3b8",
   inputBg: "rgba(255, 255, 255, 0.08)",
@@ -38,28 +38,37 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [errorShowLogin, setErrorShowLogin] = useState(false);
+
+  const clearError = () => {
+    setError("");
+    setErrorShowLogin(false);
+  };
 
   const handleNextStep = () => {
     if (!firstName.trim() || !lastName.trim()) {
-      Alert.alert("Validation", "Please enter your first and last name.");
+      setError("Please enter your first and last name.");
       return;
     }
+    clearError();
     setStep(2);
   };
 
   const handleRegister = async () => {
     if (!email.trim() || !password || !confirm) {
-      Alert.alert("Validation", "Please fill in all fields.");
+      setError("Please fill in all fields.");
       return;
     }
     if (password.length < 6) {
-      Alert.alert("Validation", "Password must be at least 6 characters.");
+      setError("Password must be at least 6 characters.");
       return;
     }
     if (password !== confirm) {
-      Alert.alert("Validation", "Passwords do not match.");
+      setError("Passwords do not match.");
       return;
     }
+    clearError();
     setLoading(true);
     try {
       const credential = await createUserWithEmailAndPassword(
@@ -84,15 +93,20 @@ export default function RegisterScreen() {
       router.replace("/(auth)/verify-email" as any);
     } catch (e: any) {
       console.error("Registration error:", e?.code, e?.message);
-      const msg =
-        e.code === "auth/email-already-in-use"
-          ? "An account with this email already exists."
-          : e.code === "auth/invalid-email"
+      if (e.code === "auth/email-already-in-use") {
+        setError("This email is already registered. Please sign in instead.");
+        setErrorShowLogin(true);
+      } else if (e.code === "auth/too-many-requests") {
+        setError("Too many attempts. Please wait a few minutes before trying again.");
+      } else {
+        const msg =
+          e.code === "auth/invalid-email"
             ? "Please enter a valid email address."
             : e.code === "auth/weak-password"
               ? "Password must be at least 6 characters."
               : `Registration failed. (${e.code ?? e.message})`;
-      Alert.alert("Error", msg);
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -134,6 +148,7 @@ export default function RegisterScreen() {
                 placeholderTextColor={COLORS.textDim}
                 autoCapitalize="words"
                 autoComplete="given-name"
+                maxLength={100}
               />
 
               <Text style={styles.label}>Last Name</Text>
@@ -145,7 +160,14 @@ export default function RegisterScreen() {
                 placeholderTextColor={COLORS.textDim}
                 autoCapitalize="words"
                 autoComplete="family-name"
+                maxLength={100}
               />
+
+              {!!error && (
+                <View style={styles.errorBanner}>
+                  <Text style={styles.errorText}>{error}</Text>
+                </View>
+              )}
 
               <TouchableOpacity
                 style={styles.primaryBtn}
@@ -160,35 +182,60 @@ export default function RegisterScreen() {
               <AppTextInput
                 style={styles.input}
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={(v) => {
+                  setEmail(v);
+                  clearError();
+                }}
                 placeholder="you@example.com"
                 placeholderTextColor={COLORS.textDim}
                 autoCapitalize="none"
                 keyboardType="email-address"
                 autoComplete="email"
+                maxLength={100}
               />
 
               <Text style={styles.label}>Password</Text>
               <AppTextInput
                 style={styles.input}
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={(v) => {
+                  setPassword(v);
+                  clearError();
+                }}
                 placeholder="Min. 6 characters"
                 placeholderTextColor={COLORS.textDim}
                 secureTextEntry
                 autoComplete="new-password"
+                maxLength={100}
               />
 
               <Text style={styles.label}>Confirm Password</Text>
               <AppTextInput
                 style={styles.input}
                 value={confirm}
-                onChangeText={setConfirm}
+                onChangeText={(v) => {
+                  setConfirm(v);
+                  clearError();
+                }}
                 placeholder="Re-enter password"
                 placeholderTextColor={COLORS.textDim}
                 secureTextEntry
                 autoComplete="new-password"
+                maxLength={100}
               />
+
+              {!!error && (
+                <View style={styles.errorBanner}>
+                  <Text style={styles.errorText}>{error}</Text>
+                  {errorShowLogin && (
+                    <TouchableOpacity
+                      onPress={() => router.replace("/(auth)/login" as any)}
+                    >
+                      <Text style={styles.errorLink}>Sign In →</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
 
               <TouchableOpacity
                 style={[styles.primaryBtn, loading && styles.btnDisabled]}
@@ -306,6 +353,27 @@ const styles = StyleSheet.create({
   linkAccent: {
     color: COLORS.accent,
     fontWeight: "600",
+  },
+  errorBanner: {
+    backgroundColor: "rgba(248, 113, 113, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(248, 113, 113, 0.4)",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 16,
+    gap: 6,
+  },
+  errorText: {
+    color: COLORS.danger,
+    fontSize: 13,
+    textAlign: "center",
+  },
+  errorLink: {
+    color: COLORS.accent,
+    fontSize: 13,
+    fontWeight: "600",
+    textAlign: "center",
   },
   stepIndicator: {
     flexDirection: "row",

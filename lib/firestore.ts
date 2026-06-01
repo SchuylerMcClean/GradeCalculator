@@ -67,6 +67,21 @@ export function subscribeToCourses(
   });
 }
 
+/** Subscribe to a single course document in real time. Returns an unsubscribe fn. */
+export function subscribeToCourse(
+  uid: string,
+  courseId: string,
+  callback: (course: Course | null) => void,
+): () => void {
+  return onSnapshot(doc(db, "users", uid, "courses", courseId), (docSnap) => {
+    if (!docSnap.exists()) {
+      callback(null);
+    } else {
+      callback({ id: docSnap.id, ...(docSnap.data() as Omit<Course, "id">) });
+    }
+  });
+}
+
 export async function addCourse(
   uid: string,
   data: Omit<Course, "id">,
