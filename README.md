@@ -1,12 +1,14 @@
-# GradeCalculator
+# Kalcul8 Grade Calculator
 
-A cross-platform grade tracking app built with React Native and Expo. Track your courses and assessments with a Firebase-backed account, or use the standalone calculator without signing in.
+A cross-platform grade tracking app built with React Native and Expo. Track your courses and assessments with a Firebase-backed account, or use the standalone calculator without signing in (not available yet).
+
+Web Version available at [([Kalcul8grades.com](https://kalcul8grades.com/))]
 
 ---
 
 ## Features
 
-### Standalone Calculator
+### Standalone Calculator (not implemented without account setup yet)
 
 - Add unlimited assessment rows with a name, weight (%), and grade (%)
 - Live calculation of your current weighted grade and the grade needed on remaining work to hit a target
