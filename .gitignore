@@ -36,7 +36,6 @@ yarn-error.*
 .env*.local
 
 # Firebase config (contains API keys — copy lib/firebase.example.ts → lib/firebase.ts)
-lib/firebase.ts
 
 # typescript
 *.tsbuildinfo
