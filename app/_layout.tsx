@@ -11,6 +11,7 @@ import { useEffect } from "react";
 
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { IS_DEV } from "@/lib/env";
 
 export const unstable_settings = {
   anchor: "(tabs)",
@@ -26,7 +27,7 @@ function AuthGuard() {
     const inAuthGroup = segments[0] === "(auth)";
     if (!user && !inAuthGroup) {
       router.replace("/(auth)/login" as any);
-    } else if (user && !user.emailVerified && !inAuthGroup) {
+    } else if (!IS_DEV && user && !user.emailVerified && !inAuthGroup) {
       router.replace("/(auth)/verify-email" as any);
     }
   }, [user, loading, segments]);

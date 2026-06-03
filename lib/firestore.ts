@@ -3,11 +3,13 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   writeBatch,
 } from "firebase/firestore";
@@ -41,6 +43,71 @@ export interface Assessment {
   type?: "single" | "bundle"; // undefined treated as "single" for backwards compat
   countBest?: number; // bundle only: top N grades count toward the final score
   items?: BundleItem[]; // bundle only: individual sub-item grades
+}
+
+// ─── User Profile ────────────────────────────────────────────────────────────
+
+export async function createUserProfile(
+  uid: string,
+  username: string,
+  email: string,
+): Promise<void> {
+  const lc = username.toLowerCase();
+  const batch = writeBatch(db);
+  batch.set(doc(db, "users", uid), {
+    username,
+    createdAt: serverTimestamp(),
+  });
+  batch.set(doc(db, "usernames", lc), { uid, email });
+  await batch.commit();
+}
+
+export async function lookupEmailByUsername(
+  username: string,
+): Promise<string | null> {
+  const snap = await getDoc(doc(db, "usernames", username.toLowerCase()));
+  if (!snap.exists()) return null;
+  return (snap.data() as { uid: string; email: string }).email;
+}
+
+export async function getUserProfile(
+  uid: string,
+): Promise<{ username?: string } | null> {
+  const snap = await getDoc(doc(db, "users", uid));
+  if (!snap.exists()) return null;
+  return snap.data() as { username?: string };
+}
+
+export async function updateUsername(
+  uid: string,
+  email: string,
+  oldUsername: string,
+  newUsername: string,
+): Promise<"taken" | "ok"> {
+  const newLc = newUsername.toLowerCase();
+  const newRef = doc(db, "usernames", newLc);
+  const existing = await getDoc(newRef);
+  if (existing.exists() && (existing.data() as { uid: string }).uid !== uid) {
+    return "taken";
+  }
+  const batch = writeBatch(db);
+  batch.delete(doc(db, "usernames", oldUsername.toLowerCase()));
+  batch.set(newRef, { uid, email });
+  batch.update(doc(db, "users", uid), { username: newUsername });
+  await batch.commit();
+  return "ok";
+}
+
+export async function deleteUserData(
+  uid: string,
+  username: string,
+): Promise<void> {
+  const batch = writeBatch(db);
+  batch.delete(doc(db, "users", uid));
+  if (username) {
+    batch.delete(doc(db, "usernames", username.toLowerCase()));
+  }
+  await batch.commit();
 }
 
 // ─── Courses ──────────────────────────────────────────────────────────────────

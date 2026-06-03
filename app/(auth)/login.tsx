@@ -1,4 +1,6 @@
 import { auth } from "@/lib/firebase";
+import { lookupEmailByUsername } from "@/lib/firestore";
+import { IS_DEV } from "@/lib/env";
 import { AppTextInput } from "@/components/app-text-input";
 import { useRouter } from "expo-router";
 import { signInWithEmailAndPassword, signOut } from "firebase/auth";
@@ -28,7 +30,7 @@ const COLORS = {
 
 export default function LoginScreen() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -37,19 +39,29 @@ export default function LoginScreen() {
   const passwordRef = useRef<any>(null);
 
   const handleLogin = async () => {
-    if (!email.trim() || !password) {
-      setError("Please enter your email and password.");
+    if (!identifier.trim() || !password) {
+      setError("Please enter your email or username and password.");
       return;
     }
     setError("");
     setLoading(true);
     try {
+      let resolvedEmail = identifier.trim();
+      if (!resolvedEmail.includes("@")) {
+        const found = await lookupEmailByUsername(resolvedEmail);
+        if (!found) {
+          setError("No account found with that username.");
+          setLoading(false);
+          return;
+        }
+        resolvedEmail = found;
+      }
       const credential = await signInWithEmailAndPassword(
         auth,
-        email.trim(),
+        resolvedEmail,
         password,
       );
-      if (!credential.user.emailVerified) {
+      if (!IS_DEV && !credential.user.emailVerified) {
         await signOut(auth);
         setError(
           "Your email address hasn't been verified yet. Please check your inbox for the verification link.",
@@ -58,6 +70,7 @@ export default function LoginScreen() {
       }
       router.replace("/(tabs)/calculator" as any);
     } catch (e: any) {
+      console.error("Login error:", e.code, e.message, e);
       const msg =
         e.code === "auth/too-many-requests"
           ? "Too many sign-in attempts. Please wait a few minutes before trying again."
@@ -65,7 +78,10 @@ export default function LoginScreen() {
               e.code === "auth/user-not-found" ||
               e.code === "auth/wrong-password"
             ? "Incorrect email or password. Please check your details and try again."
-            : "Sign in failed. Please try again.";
+            : e.code === "permission-denied" ||
+                e.message?.includes("permission")
+              ? "Unable to look up account. Check your Firestore security rules allow unauthenticated reads on the 'usernames' collection."
+              : "Sign in failed. Please try again.";
       setError(msg);
     } finally {
       setLoading(false);
@@ -82,15 +98,15 @@ export default function LoginScreen() {
           <Text style={styles.title}>Grade Calculator</Text>
           <Text style={styles.subtitle}>Sign in to your account</Text>
 
-          <Text style={styles.label}>Email</Text>
+          <Text style={styles.label}>Email or Username</Text>
           <AppTextInput
             style={styles.input}
-            value={email}
+            value={identifier}
             onChangeText={(v) => {
-              setEmail(v);
+              setIdentifier(v);
               setError("");
             }}
-            placeholder="you@example.com"
+            placeholder="you@example.com or jane_smith"
             placeholderTextColor={COLORS.textDim}
             autoCapitalize="none"
             keyboardType="email-address"

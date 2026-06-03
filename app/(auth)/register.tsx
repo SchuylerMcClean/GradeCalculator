@@ -1,4 +1,6 @@
 import { auth } from "@/lib/firebase";
+import { createUserProfile } from "@/lib/firestore";
+import { IS_DEV } from "@/lib/env";
 import { AppTextInput } from "@/components/app-text-input";
 import { useRouter } from "expo-router";
 import {
@@ -34,6 +36,7 @@ export default function RegisterScreen() {
   const [step, setStep] = useState<1 | 2>(1);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -49,6 +52,16 @@ export default function RegisterScreen() {
   const handleNextStep = () => {
     if (!firstName.trim() || !lastName.trim()) {
       setError("Please enter your first and last name.");
+      return;
+    }
+    if (!username.trim()) {
+      setError("Please enter a username.");
+      return;
+    }
+    if (!/^[a-zA-Z0-9_]{3,30}$/.test(username.trim())) {
+      setError(
+        "Username must be 3–30 characters and contain only letters, numbers, or underscores.",
+      );
       return;
     }
     clearError();
@@ -79,6 +92,16 @@ export default function RegisterScreen() {
       await updateProfile(credential.user, {
         displayName: `${firstName.trim()} ${lastName.trim()}`,
       });
+      await createUserProfile(
+        credential.user.uid,
+        username.trim(),
+        email.trim(),
+      );
+      // In dev mode skip email verification and go straight to the app.
+      if (IS_DEV) {
+        router.replace("/(tabs)/calculator" as any);
+        return;
+      }
       // Send verification email — navigate to verify screen regardless of
       // whether this succeeds so the user can resend from there.
       try {
@@ -97,7 +120,9 @@ export default function RegisterScreen() {
         setError("This email is already registered. Please sign in instead.");
         setErrorShowLogin(true);
       } else if (e.code === "auth/too-many-requests") {
-        setError("Too many attempts. Please wait a few minutes before trying again.");
+        setError(
+          "Too many attempts. Please wait a few minutes before trying again.",
+        );
       } else {
         const msg =
           e.code === "auth/invalid-email"
@@ -161,6 +186,21 @@ export default function RegisterScreen() {
                 autoCapitalize="words"
                 autoComplete="family-name"
                 maxLength={100}
+              />
+
+              <Text style={styles.label}>Username</Text>
+              <AppTextInput
+                style={styles.input}
+                value={username}
+                onChangeText={(v) => {
+                  setUsername(v);
+                  clearError();
+                }}
+                placeholder="e.g. jane_smith"
+                placeholderTextColor={COLORS.textDim}
+                autoCapitalize="none"
+                autoComplete="username-new"
+                maxLength={30}
               />
 
               {!!error && (
