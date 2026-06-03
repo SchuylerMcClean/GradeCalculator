@@ -4,7 +4,7 @@ A cross-platform grade tracking app built with React Native and Expo. Track your
 
 Web version available at [Kalcul8grades.com](https://kalcul8grades.com/)
 
-## Mobile versions and feature update coming soon!
+Mobile versions and new features coming soon!
 
 ## Features
 
