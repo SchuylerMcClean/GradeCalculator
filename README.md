@@ -2,7 +2,7 @@
 
 A cross-platform grade tracking app built with React Native and Expo. Track your courses and assessments with a Firebase-backed account, or use the standalone calculator without signing in (not available yet).
 
-Web version available at [Kalcul8grades.com](https://kalcul8grades.com/)
+Web version available at [Kalcul8Grades.com](https://kalcul8grades.com/)
 
 Mobile versions and new features coming soon!
 
