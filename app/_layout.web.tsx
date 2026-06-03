@@ -143,7 +143,7 @@ function RootLayoutInner() {
       <View style={styles.root}>
         <BrowserTabBar />
         <View style={styles.content}>
-          <Stack>
+          <Stack screenOptions={{ title: "Kalcul8 - Grade Calculator" }}>
             <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen name="(auth)" options={{ headerShown: false }} />
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
