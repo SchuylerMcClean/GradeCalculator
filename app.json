@@ -23,7 +23,8 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/k8icon.png"
+      "favicon": "./assets/images/k8icon.png",
+      "title": "Kalcul8 - Grade Calculator"
     },
     "plugins": [
       "expo-router",
