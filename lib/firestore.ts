@@ -256,28 +256,6 @@ export async function addAssessment(
 }
 
 /**
- * Swap the `order` values of two assessments in a single batch write.
- * Used to move an assessment up or down in the list.
- */
-export async function swapAssessmentOrder(
-  uid: string,
-  courseId: string,
-  aId: string,
-  aOrder: number,
-  bId: string,
-  bOrder: number,
-): Promise<void> {
-  const batch = writeBatch(db);
-  batch.update(doc(db, "users", uid, "courses", courseId, "assessments", aId), {
-    order: bOrder,
-  });
-  batch.update(doc(db, "users", uid, "courses", courseId, "assessments", bId), {
-    order: aOrder,
-  });
-  await batch.commit();
-}
-
-/**
  * Assign sequential `order` values to all assessments that are missing the field.
  * Call once on first load as a migration step.
  */

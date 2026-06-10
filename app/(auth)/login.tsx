@@ -34,8 +34,6 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [passwordPlaceholderVisible, setPasswordPlaceholderVisible] =
-    useState(true);
   const passwordRef = useRef<any>(null);
 
   const handleLogin = async () => {
@@ -131,8 +129,6 @@ export default function LoginScreen() {
             secureTextEntry
             autoComplete="password"
             returnKeyType="go"
-            onFocus={() => setPasswordPlaceholderVisible(false)}
-            onBlur={() => setPasswordPlaceholderVisible(true)}
             onSubmitEditing={handleLogin}
           />
 

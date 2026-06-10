@@ -1,4 +1,5 @@
 import { useAuth } from "@/lib/auth-context";
+import { IS_DEV } from "@/lib/env";
 import { Redirect } from "expo-router";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 
@@ -14,7 +15,8 @@ export default function Index() {
   }
 
   if (!user) return <Redirect href="/(auth)/login" />;
-  if (!user.emailVerified) return <Redirect href="/(auth)/verify-email" />;
+  if (!IS_DEV && !user.emailVerified)
+    return <Redirect href="/(auth)/verify-email" />;
   return <Redirect href="/(tabs)/calculator" />;
 }
 

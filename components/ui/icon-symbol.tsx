@@ -21,6 +21,7 @@ const MAPPING = {
   "calculator.fill": "calculate",
   "star.fill": "star",
   "book.fill": "menu-book",
+  "gearshape.fill": "settings",
   "chevron.left.forwardslash.chevron.right": "code",
   "chevron.right": "chevron-right",
 } as IconMapping;

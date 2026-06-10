@@ -1,17 +1,5 @@
-const COLORS = {
-  bg: "#020617",
-  card: "rgba(255, 255, 255, 0.05)",
-  border: "rgba(255, 255, 255, 0.12)",
-  accent: "#a78bfa", // Soft Violet
-  success: "#4ade80",
-  danger: "#f87171",
-  textMain: "#f8fafc",
-  textDim: "#94a3b8",
-};
-
 import { useAuth } from "@/lib/auth-context";
 import { confirmAction } from "@/lib/confirm";
-import { auth } from "@/lib/firebase";
 import {
   addCourse,
   batchUpdateCourseOrders,
@@ -44,6 +32,17 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+
+const COLORS = {
+  bg: "#020617",
+  card: "rgba(255, 255, 255, 0.05)",
+  border: "rgba(255, 255, 255, 0.12)",
+  accent: "#a78bfa",
+  success: "#4ade80",
+  danger: "#f87171",
+  textMain: "#f8fafc",
+  textDim: "#94a3b8",
+};
 
 const STATUS_OPTIONS: CourseStatus[] = ["active", "completed", "planned"];
 const EMPTY_FORM = {
@@ -257,25 +256,14 @@ export default function CoursesPage() {
   };
 
   const handleDeleteCourse = async (course: Course) => {
-    console.log("[DELETE COURSE] Confirming for:", course.id, course.name);
     const confirmed = await confirmAction(
       "Delete Course",
       `Remove "${course.name}" and all its assessments?`,
     );
-    if (!confirmed) {
-      console.log("[DELETE COURSE] Cancelled");
-      return;
-    }
-    console.log(
-      "[DELETE COURSE] Confirmed, calling deleteCourse(",
-      course.id,
-      ")",
-    );
+    if (!confirmed) return;
     try {
       await deleteCourse(uid, course.id);
-      console.log("[DELETE COURSE] Success:", course.id);
     } catch (e) {
-      console.error("[DELETE COURSE] Error:", e);
       Alert.alert("Error", "Failed to delete course.");
     }
   };

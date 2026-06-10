@@ -1,15 +1,3 @@
-const COLORS = {
-  bg: "#020617",
-  card: "rgba(255, 255, 255, 0.05)",
-  border: "rgba(255, 255, 255, 0.12)",
-  accent: "#a78bfa",
-  success: "#4ade80",
-  danger: "#f87171",
-  textMain: "#f8fafc",
-  textDim: "#94a3b8",
-  inputBg: "rgba(255, 255, 255, 0.08)",
-};
-
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, {
   useCallback,
@@ -59,6 +47,18 @@ import {
   updateAssessment,
   updateCourse,
 } from "@/lib/firestore";
+
+const COLORS = {
+  bg: "#020617",
+  card: "rgba(255, 255, 255, 0.05)",
+  border: "rgba(255, 255, 255, 0.12)",
+  accent: "#a78bfa",
+  success: "#4ade80",
+  danger: "#f87171",
+  textMain: "#f8fafc",
+  textDim: "#94a3b8",
+  inputBg: "rgba(255, 255, 255, 0.08)",
+};
 
 function computeRepeatedGrade(a: Assessment): number | null {
   const items = a.items ?? [];
