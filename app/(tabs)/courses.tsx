@@ -424,6 +424,7 @@ export default function CoursesPage() {
           ref={scrollViewRef}
           contentContainerStyle={styles.listContainer}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           scrollEventThrottle={16}
           onScroll={(e) => {
             listScrollRef.current = e.nativeEvent.contentOffset.y;
@@ -697,7 +698,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.bg,
-    paddingTop: 40,
+    paddingTop: Platform.OS === "web" ? 40 : 0,
   },
   headerWrapper: {
     width: "100%",
@@ -768,7 +769,7 @@ const styles = StyleSheet.create({
   },
 
   listContainer: {
-    paddingBottom: 80,
+    paddingBottom: 100,
   },
   courseCard: {
     flexDirection: "row",

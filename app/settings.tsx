@@ -261,7 +261,10 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={styles.page}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.maxWidthContent}>
           <View style={styles.header}>
             <TouchableOpacity
@@ -621,7 +624,7 @@ const styles = StyleSheet.create({
     width: "100%",
     alignSelf: "center",
     paddingHorizontal: 24,
-    paddingBottom: 48,
+    paddingBottom: 100,
     gap: 8,
   },
   header: {

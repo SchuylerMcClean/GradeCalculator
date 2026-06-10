@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -156,6 +157,7 @@ export default function HomeScreen() {
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
       >
         <View style={styles.maxWidthContent}>
           <View style={styles.header}>
@@ -311,7 +313,11 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: COLORS.bg, paddingTop: 40 },
+  page: {
+    flex: 1,
+    backgroundColor: COLORS.bg,
+    paddingTop: Platform.OS === "web" ? 40 : 0,
+  },
   maxWidthContent: {
     width: "100%",
     maxWidth: 900,
