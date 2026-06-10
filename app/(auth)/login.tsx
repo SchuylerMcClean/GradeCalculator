@@ -106,7 +106,7 @@ export default function LoginScreen() {
               setIdentifier(v);
               setError("");
             }}
-            placeholder="you@example.com or jane_smith"
+            placeholder=""
             placeholderTextColor={COLORS.textDim}
             autoCapitalize="none"
             keyboardType="email-address"
@@ -127,7 +127,6 @@ export default function LoginScreen() {
               setError("");
             }}
             maxLength={100}
-            placeholder={passwordPlaceholderVisible ? "••••••••" : ""}
             placeholderTextColor={COLORS.textDim}
             secureTextEntry
             autoComplete="password"

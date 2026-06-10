@@ -3,6 +3,7 @@ import {
   DefaultTheme,
   ThemeProvider,
 } from "@react-navigation/native";
+import Head from "expo-router/head";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { signOut } from "firebase/auth";
 import React from "react";
@@ -140,6 +141,9 @@ function RootLayoutInner() {
 
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+      <Head>
+        <title>Kalcul8 - Grade Calculator</title>
+      </Head>
       <View style={styles.root}>
         <BrowserTabBar />
         <View style={styles.content}>
