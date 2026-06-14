@@ -30,7 +30,7 @@ export default function TabLayout() {
         options={{
           title: "Calculator",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="calculator" color={color} />
+            <IconSymbol size={28} name="function" color={color} />
           ),
         }}
       />

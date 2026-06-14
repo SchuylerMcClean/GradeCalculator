@@ -36,7 +36,7 @@ function AuthGuard() {
   return null;
 }
 
-function AndroidRoot() {
+function NativeRoot() {
   useAndroidBackHandler();
   const colorScheme = useColorScheme();
 
@@ -59,7 +59,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AuthProvider>
         <AuthGuard />
-        <AndroidRoot />
+        <NativeRoot />
       </AuthProvider>
     </GestureHandlerRootView>
   );
