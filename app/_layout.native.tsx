@@ -26,7 +26,8 @@ function AuthGuard() {
   useEffect(() => {
     if (loading) return;
     const inAuthGroup = segments[0] === "(auth)";
-    if (!user && !inAuthGroup) {
+    const inTabsGroup = segments[0] === "(tabs)";
+    if (!user && !inAuthGroup && !inTabsGroup) {
       router.replace("/(auth)/login" as any);
     } else if (!IS_DEV && user && !user.emailVerified && !inAuthGroup) {
       router.replace("/(auth)/verify-email" as any);

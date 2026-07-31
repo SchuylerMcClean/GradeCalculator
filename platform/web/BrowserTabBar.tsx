@@ -26,7 +26,7 @@ export function BrowserTabBar() {
   const segments = useSegments();
   const router = useRouter();
 
-  if (!user || segments[0] === "(auth)") return null;
+  if (segments[0] === "(auth)") return null;
 
   let activeTab: string;
   if (segments[0] === "course") {
@@ -45,7 +45,7 @@ export function BrowserTabBar() {
     );
     if (!confirmed) return;
     await signOut(auth);
-    router.replace("/(auth)/login" as any);
+    router.replace("/(tabs)/calculator" as any);
   };
 
   return (
@@ -73,32 +73,57 @@ export function BrowserTabBar() {
           );
         })}
         <View style={styles.tabStripSpacer} />
-        <Pressable
-          onPress={() => router.push("/settings" as any)}
-          style={({ hovered }: any) => [
-            styles.navActionBtn,
-            hovered && styles.navActionBtnHovered,
-            segments[0] === "settings" && styles.navActionBtnActive,
-          ]}
-        >
-          <Text
-            style={[
-              styles.navActionLabel,
-              segments[0] === "settings" && styles.navActionLabelActive,
-            ]}
-          >
-            Settings
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={handleSignOut}
-          style={({ hovered }: any) => [
-            styles.signOutBtn,
-            hovered && styles.signOutBtnHovered,
-          ]}
-        >
-          <Text style={styles.signOutLabel}>Sign Out</Text>
-        </Pressable>
+        {user ? (
+          <>
+            <Pressable
+              onPress={() => router.push("/settings" as any)}
+              style={({ hovered }: any) => [
+                styles.navActionBtn,
+                hovered && styles.navActionBtnHovered,
+                segments[0] === "settings" && styles.navActionBtnActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.navActionLabel,
+                  segments[0] === "settings" && styles.navActionLabelActive,
+                ]}
+              >
+                Settings
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={handleSignOut}
+              style={({ hovered }: any) => [
+                styles.signOutBtn,
+                hovered && styles.signOutBtnHovered,
+              ]}
+            >
+              <Text style={styles.signOutLabel}>Sign Out</Text>
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <Pressable
+              onPress={() => router.push("/(auth)/register" as any)}
+              style={({ hovered }: any) => [
+                styles.navActionBtn,
+                hovered && styles.navActionBtnHovered,
+              ]}
+            >
+              <Text style={styles.navActionLabel}>Register</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => router.push("/(auth)/login" as any)}
+              style={({ hovered }: any) => [
+                styles.signInBtn,
+                hovered && styles.signInBtnHovered,
+              ]}
+            >
+              <Text style={styles.signInLabel}>Sign In</Text>
+            </Pressable>
+          </>
+        )}
       </View>
       <View style={styles.tabBarDivider} />
     </View>
@@ -202,6 +227,24 @@ const styles = StyleSheet.create({
     color: COLORS.textDim,
     fontSize: 13,
     fontWeight: "500",
+    userSelect: "none",
+  } as any,
+  signInBtn: {
+    alignSelf: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 6,
+    backgroundColor: "#a78bfa",
+    marginRight: 8,
+    marginBottom: 8,
+  } as any,
+  signInBtnHovered: {
+    backgroundColor: "#8b5cf6",
+  },
+  signInLabel: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
     userSelect: "none",
   } as any,
 });

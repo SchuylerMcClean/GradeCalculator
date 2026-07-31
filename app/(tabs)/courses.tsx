@@ -352,6 +352,31 @@ export default function CoursesPage() {
     [courses, uid],
   );
 
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.guestContainer}>
+          <Text style={styles.guestTitle}>Sign in to use My Courses</Text>
+          <Text style={styles.guestSubtitle}>
+            Create an account to save and track your courses across devices.
+          </Text>
+          <TouchableOpacity
+            style={styles.guestBtn}
+            onPress={() => router.push("/(auth)/login" as any)}
+          >
+            <Text style={styles.guestBtnText}>Sign In</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.guestBtn, styles.guestBtnOutline]}
+            onPress={() => router.push("/(auth)/register" as any)}
+          >
+            <Text style={styles.guestBtnOutlineText}>Create Account</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -891,6 +916,52 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "800",
     color: COLORS.accent,
+  },
+  guestContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 32,
+    backgroundColor: COLORS.bg,
+  },
+  guestTitle: {
+    color: COLORS.textMain,
+    fontSize: 22,
+    fontWeight: "700",
+    textAlign: "center",
+    marginBottom: 12,
+  },
+  guestSubtitle: {
+    color: COLORS.textDim,
+    fontSize: 14,
+    textAlign: "center",
+    marginBottom: 32,
+    lineHeight: 20,
+  },
+  guestBtn: {
+    backgroundColor: COLORS.accent,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 40,
+    alignItems: "center",
+    marginBottom: 12,
+    width: "100%",
+    maxWidth: 320,
+  },
+  guestBtnText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 16,
+  },
+  guestBtnOutline: {
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+  },
+  guestBtnOutlineText: {
+    color: COLORS.accent,
+    fontWeight: "700",
+    fontSize: 16,
   },
   loadingContainer: {
     flex: 1,

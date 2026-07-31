@@ -159,6 +159,15 @@ export default function LoginScreen() {
               <Text style={styles.linkAccent}>Register</Text>
             </Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.linkBtn, { marginTop: 12 }]}
+            onPress={() => router.replace("/(tabs)/calculator" as any)}
+          >
+            <Text style={styles.linkText}>
+              <Text style={styles.linkAccent}>Continue without an account</Text>
+            </Text>
+          </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
