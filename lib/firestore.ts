@@ -320,3 +320,64 @@ export async function deleteAssessment(
     doc(db, "users", uid, "courses", courseId, "assessments", assessmentId),
   );
 }
+
+// ─── Schemes ──────────────────────────────────────────────────────────────────
+
+export interface Scheme {
+  id: string;
+  name: string;
+  order: number;
+  weights: Record<string, number>;
+}
+
+export function subscribeToSchemes(
+  uid: string,
+  courseId: string,
+  callback: (schemes: Scheme[]) => void,
+): () => void {
+  const q = query(
+    collection(db, "users", uid, "courses", courseId, "schemes"),
+    orderBy("order"),
+  );
+  return onSnapshot(q, (snapshot) => {
+    const schemes: Scheme[] = snapshot.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...(docSnap.data() as Omit<Scheme, "id">),
+    }));
+    callback(schemes);
+  });
+}
+
+export async function addScheme(
+  uid: string,
+  courseId: string,
+  data: Omit<Scheme, "id">,
+): Promise<string> {
+  const ref = await addDoc(
+    collection(db, "users", uid, "courses", courseId, "schemes"),
+    { ...data, createdAt: serverTimestamp() },
+  );
+  return ref.id;
+}
+
+export async function updateScheme(
+  uid: string,
+  courseId: string,
+  schemeId: string,
+  data: Partial<Omit<Scheme, "id">>,
+): Promise<void> {
+  await updateDoc(
+    doc(db, "users", uid, "courses", courseId, "schemes", schemeId),
+    data as Record<string, unknown>,
+  );
+}
+
+export async function deleteScheme(
+  uid: string,
+  courseId: string,
+  schemeId: string,
+): Promise<void> {
+  await deleteDoc(
+    doc(db, "users", uid, "courses", courseId, "schemes", schemeId),
+  );
+}

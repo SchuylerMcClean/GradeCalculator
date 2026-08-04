@@ -34,6 +34,7 @@ import { AppTextInput } from "@/components/app-text-input";
 import { confirmAction } from "@/lib/confirm";
 import {
   addAssessment,
+  addScheme,
   type Assessment,
   type BundleItem,
   batchUpdateOrders,
@@ -42,10 +43,13 @@ import {
   deleteAssessment,
   deleteCourse,
   initAssessmentOrder,
+  type Scheme,
   subscribeToAssessments,
   subscribeToCourse,
+  subscribeToSchemes,
   updateAssessment,
   updateCourse,
+  updateScheme,
 } from "@/lib/firestore";
 
 const COLORS = {
@@ -386,6 +390,8 @@ export default function CourseDetailScreen() {
   const [courseStatus, setCourseStatus] = useState<CourseStatus>(
     (initialStatus as CourseStatus) ?? "active",
   );
+  const [schemes, setSchemes] = useState<Scheme[]>([]);
+  const [activeSchemeIdx, setActiveSchemeIdx] = useState(0);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -445,13 +451,37 @@ export default function CourseDetailScreen() {
     return unsubscribe;
   }, [id, uid]);
 
-  // Keep the course's computed grade in sync
+  useEffect(() => {
+    if (!id || !uid) return;
+    return subscribeToSchemes(uid, id, setSchemes);
+  }, [id, uid]);
+
+  // Clamp active scheme index when the schemes list shrinks
+  useEffect(() => {
+    if (schemes.length > 0 && activeSchemeIdx >= schemes.length) {
+      setActiveSchemeIdx(schemes.length - 1);
+    }
+  }, [schemes.length, activeSchemeIdx]);
+
+  // Keep the course's computed grade in sync (uses best scheme when multi-scheme)
   useEffect(() => {
     if (!id || !uid || loading || deletingRef.current) return;
-    const grade = computeGrade(assessments);
+    let grade: number | null;
+    if (schemes.length >= 2) {
+      grade = schemes.reduce<number | null>((best, scheme) => {
+        const sa = assessments.map((a) => ({
+          ...a,
+          weight: scheme.weights[a.id] ?? a.weight,
+        }));
+        const g = computeGrade(sa);
+        return g !== null && (best === null || g > best) ? g : best;
+      }, null);
+    } else {
+      grade = computeGrade(assessments);
+    }
     if (grade === null) return;
     updateCourse(uid, id, { grade }).catch(() => {});
-  }, [assessments, id, uid, loading]);
+  }, [assessments, schemes, id, uid, loading]);
 
   const handleDeleteCourse = async () => {
     const confirmed = await confirmAction(
@@ -494,10 +524,16 @@ export default function CourseDetailScreen() {
   };
 
   const openEdit = (assessment: Assessment) => {
+    const activeScheme =
+      schemes.length > 0 ? (schemes[activeSchemeIdx] ?? null) : null;
+    const schemeWeight =
+      activeScheme != null
+        ? (activeScheme.weights[assessment.id] ?? assessment.weight)
+        : assessment.weight;
     setEditingId(assessment.id);
     setForm({
       name: assessment.name,
-      weight: String(assessment.weight),
+      weight: String(schemeWeight),
       grade: assessment.grade !== null ? String(assessment.grade) : "",
     });
     setModalVisible(true);
@@ -523,14 +559,26 @@ export default function CourseDetailScreen() {
       }
     }
 
+    const activeScheme =
+      schemes.length > 0 ? (schemes[activeSchemeIdx] ?? null) : null;
     setSaving(true);
     try {
       if (editingId) {
-        await updateAssessment(uid, id!, editingId, {
-          name: trimmedName,
-          weight,
-          grade,
-        });
+        if (activeScheme != null) {
+          await updateAssessment(uid, id!, editingId, {
+            name: trimmedName,
+            grade,
+          });
+          await updateScheme(uid, id!, activeScheme.id, {
+            weights: { ...activeScheme.weights, [editingId]: weight },
+          });
+        } else {
+          await updateAssessment(uid, id!, editingId, {
+            name: trimmedName,
+            weight,
+            grade,
+          });
+        }
       } else {
         if (assessments.length >= 50) {
           Alert.alert(
@@ -540,12 +588,21 @@ export default function CourseDetailScreen() {
           setSaving(false);
           return;
         }
-        await addAssessment(uid, id!, {
+        const newId = await addAssessment(uid, id!, {
           name: trimmedName,
           weight,
           grade,
           order: assessments.length,
         });
+        if (schemes.length > 0) {
+          await Promise.all(
+            schemes.map((s) =>
+              updateScheme(uid, id!, s.id, {
+                weights: { ...s.weights, [newId]: weight },
+              }),
+            ),
+          );
+        }
       }
       setModalVisible(false);
     } catch (e) {
@@ -563,6 +620,15 @@ export default function CourseDetailScreen() {
     if (!confirmed) return;
     try {
       await deleteAssessment(uid, id!, assessment.id);
+      if (schemes.length > 0) {
+        await Promise.all(
+          schemes.map((s) => {
+            const newWeights = { ...s.weights };
+            delete newWeights[assessment.id];
+            return updateScheme(uid, id!, s.id, { weights: newWeights });
+          }),
+        );
+      }
     } catch {
       Alert.alert("Error", "Failed to delete assessment.");
     }
@@ -574,12 +640,53 @@ export default function CourseDetailScreen() {
     setRepeatedModalVisible(true);
   };
 
+  const handleAddScheme = async () => {
+    try {
+      if (schemes.length === 0) {
+        // First add: formalise current weights as Scheme 1 and create Scheme 2
+        const baseWeights: Record<string, number> = {};
+        assessments.forEach((a) => {
+          baseWeights[a.id] = a.weight;
+        });
+        await Promise.all([
+          addScheme(uid, id!, {
+            name: "Scheme 1",
+            order: 0,
+            weights: { ...baseWeights },
+          }),
+          addScheme(uid, id!, {
+            name: "Scheme 2",
+            order: 1,
+            weights: { ...baseWeights },
+          }),
+        ]);
+        setActiveSchemeIdx(1);
+      } else {
+        const src = schemes[activeSchemeIdx] ?? schemes[schemes.length - 1];
+        await addScheme(uid, id!, {
+          name: `Scheme ${schemes.length + 1}`,
+          order: schemes.length,
+          weights: { ...(src?.weights ?? {}) },
+        });
+        setActiveSchemeIdx(schemes.length);
+      }
+    } catch {
+      Alert.alert("Error", "Failed to add scheme. Please try again.");
+    }
+  };
+
   const openEditRepeated = (a: Assessment) => {
+    const activeScheme =
+      schemes.length > 0 ? (schemes[activeSchemeIdx] ?? null) : null;
+    const schemeWeight =
+      activeScheme != null
+        ? (activeScheme.weights[a.id] ?? a.weight)
+        : a.weight;
     setEditingRepeatedId(a.id);
     const itemCount = a.items?.length ?? 0;
     setRepeatedForm({
       name: a.name,
-      weight: String(a.weight),
+      weight: String(schemeWeight),
       total: String(itemCount),
       countBest: String(itemCount - (a.countBest ?? itemCount)),
     });
@@ -613,6 +720,8 @@ export default function CourseDetailScreen() {
       return;
     }
     const countBest = total - dropped;
+    const activeScheme =
+      schemes.length > 0 ? (schemes[activeSchemeIdx] ?? null) : null;
     setRepeatedSaving(true);
     try {
       if (!editingRepeatedId && assessments.length >= 50) {
@@ -638,18 +747,29 @@ export default function CourseDetailScreen() {
         } else {
           newItems = existingItems.slice(0, total);
         }
-        await updateAssessment(uid, id!, editingRepeatedId, {
-          name: trimmedName,
-          weight,
-          countBest,
-          items: newItems,
-        });
+        if (activeScheme != null) {
+          await updateAssessment(uid, id!, editingRepeatedId, {
+            name: trimmedName,
+            countBest,
+            items: newItems,
+          });
+          await updateScheme(uid, id!, activeScheme.id, {
+            weights: { ...activeScheme.weights, [editingRepeatedId]: weight },
+          });
+        } else {
+          await updateAssessment(uid, id!, editingRepeatedId, {
+            name: trimmedName,
+            weight,
+            countBest,
+            items: newItems,
+          });
+        }
       } else {
         const items: BundleItem[] = Array.from({ length: total }, (_, i) => ({
           id: String(i),
           grade: null as null,
         }));
-        await addAssessment(uid, id!, {
+        const newId = await addAssessment(uid, id!, {
           name: trimmedName,
           weight,
           grade: null,
@@ -658,6 +778,15 @@ export default function CourseDetailScreen() {
           countBest,
           items,
         });
+        if (schemes.length > 0) {
+          await Promise.all(
+            schemes.map((s) =>
+              updateScheme(uid, id!, s.id, {
+                weights: { ...s.weights, [newId]: weight },
+              }),
+            ),
+          );
+        }
       }
       setRepeatedModalVisible(false);
     } catch {
@@ -691,9 +820,51 @@ export default function CourseDetailScreen() {
   const [desiredGradeOpen, setDesiredGradeOpen] = useState(false);
   const [weightWarningDismissed, setWeightWarningDismissed] = useState(false);
 
-  const calculatedGrade = computeGrade(assessments);
-  const totalWeight = assessments.reduce((sum, a) => sum + a.weight, 0);
-  const gradedWeight = assessments
+  const activeScheme =
+    schemes.length > 0 ? (schemes[activeSchemeIdx] ?? null) : null;
+
+  const effectiveAssessments = useMemo(
+    () =>
+      assessments.map((a) => ({
+        ...a,
+        weight:
+          activeScheme != null
+            ? (activeScheme.weights[a.id] ?? a.weight)
+            : a.weight,
+      })),
+    [assessments, activeScheme],
+  );
+
+  const schemeGrades = useMemo(
+    () =>
+      schemes.map((scheme) => {
+        const sa = assessments.map((a) => ({
+          ...a,
+          weight: scheme.weights[a.id] ?? a.weight,
+        }));
+        return computeGrade(sa);
+      }),
+    [schemes, assessments],
+  );
+
+  const bestSchemeIdx = useMemo(() => {
+    let bestIdx = -1;
+    let bestGrade = -Infinity;
+    schemeGrades.forEach((g, i) => {
+      if (g !== null && g > bestGrade) {
+        bestGrade = g;
+        bestIdx = i;
+      }
+    });
+    return bestIdx;
+  }, [schemeGrades]);
+
+  const calculatedGrade = computeGrade(effectiveAssessments);
+  const totalWeight = effectiveAssessments.reduce(
+    (sum, a) => sum + a.weight,
+    0,
+  );
+  const gradedWeight = effectiveAssessments
     .filter((a) => {
       if (!a.type || a.type === "single") return a.grade !== null;
       return (a.items ?? []).some((i) => i.grade !== null);
@@ -709,7 +880,7 @@ export default function CourseDetailScreen() {
   const requiredScore = useMemo((): number | null => {
     const desired = parseFloat(desiredGrade);
     if (isNaN(desired) || desired < 0 || desired > 100) return null;
-    const gw = assessments
+    const gw = effectiveAssessments
       .filter((a) => {
         if (!a.type || a.type === "single") return a.grade !== null;
         return (a.items ?? []).some((i) => i.grade !== null);
@@ -717,7 +888,7 @@ export default function CourseDetailScreen() {
       .reduce((sum, a) => sum + a.weight, 0);
     const remainingWeight = 100 - gw;
     if (remainingWeight <= 0) return null;
-    const currentWeightedSum = assessments.reduce((sum, a) => {
+    const currentWeightedSum = effectiveAssessments.reduce((sum, a) => {
       if (!a.type || a.type === "single") {
         return a.grade !== null ? sum + (a.grade as number) * a.weight : sum;
       }
@@ -725,18 +896,27 @@ export default function CourseDetailScreen() {
       return g !== null ? sum + g * a.weight : sum;
     }, 0);
     return (desired * 100 - currentWeightedSum) / remainingWeight;
-  }, [desiredGrade, assessments]);
+  }, [desiredGrade, effectiveAssessments]);
 
   // ─── Drag helpers ─────────────────────────────────────────────────────────────
 
   const displayAssessments = useMemo(() => {
-    if (dragIdx === -1 || hoverIdx === -1 || hoverIdx === dragIdx)
-      return assessments;
-    const arr = [...assessments];
-    const [moved] = arr.splice(dragIdx, 1);
-    arr.splice(hoverIdx, 0, moved);
-    return arr;
-  }, [assessments, dragIdx, hoverIdx]);
+    let arr: Assessment[];
+    if (dragIdx === -1 || hoverIdx === -1 || hoverIdx === dragIdx) {
+      arr = assessments;
+    } else {
+      arr = [...assessments];
+      const [moved] = arr.splice(dragIdx, 1);
+      arr.splice(hoverIdx, 0, moved);
+    }
+    return arr.map((a) => ({
+      ...a,
+      weight:
+        activeScheme != null
+          ? (activeScheme.weights[a.id] ?? a.weight)
+          : a.weight,
+    }));
+  }, [assessments, dragIdx, hoverIdx, activeScheme]);
 
   const handleDragStart = useCallback(
     (index: number, clientY: number, cardTop: number) => {
@@ -1020,6 +1200,34 @@ export default function CourseDetailScreen() {
           onLayout={(e) => setSummaryHeight(e.nativeEvent.layout.height)}
         >
           <View style={styles.summaryMaxWidth}>
+            {/* Scheme tabs — only shown when 2+ schemes exist */}
+            {schemes.length >= 2 && (
+              <View style={styles.schemeTabs}>
+                {schemes.map((scheme, idx) => (
+                  <TouchableOpacity
+                    key={scheme.id}
+                    style={[
+                      styles.schemeTab,
+                      activeSchemeIdx === idx && styles.schemeTabActive,
+                    ]}
+                    onPress={() => setActiveSchemeIdx(idx)}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.schemeTabText,
+                        activeSchemeIdx === idx && styles.schemeTabTextActive,
+                      ]}
+                    >
+                      {scheme.name}
+                      {idx === bestSchemeIdx && schemeGrades[idx] !== null
+                        ? " ★"
+                        : ""}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
             {/* Grade summary */}
             <View style={styles.summaryCard}>
               <View style={styles.summaryItem}>
@@ -1376,6 +1584,17 @@ export default function CourseDetailScreen() {
                 Add Repeating Assessment
               </Text>
             </TouchableOpacity>
+            <View style={styles.addDropdownDivider} />
+            <TouchableOpacity
+              style={styles.addDropdownItem}
+              onPress={() => {
+                setAddMenuOpen(false);
+                handleAddScheme();
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.addDropdownItemText}>Add Scheme</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -1412,7 +1631,12 @@ export default function CourseDetailScreen() {
                       {assessments[dragIdx].name}
                     </Text>
                     <Text style={styles.assessmentWeight}>
-                      Weight: {assessments[dragIdx].weight}%
+                      Weight:{" "}
+                      {activeScheme != null
+                        ? (activeScheme.weights[assessments[dragIdx].id] ??
+                          assessments[dragIdx].weight)
+                        : assessments[dragIdx].weight}
+                      %
                       {assessments[dragIdx].type === "bundle" &&
                         ` · Top ${assessments[dragIdx].countBest} of ${assessments[dragIdx].items?.length ?? 0}`}
                     </Text>
@@ -1943,5 +2167,32 @@ const styles = StyleSheet.create({
   addDropdownDivider: {
     height: 1,
     backgroundColor: COLORS.border,
+  },
+  schemeTabs: {
+    flexDirection: "row",
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 4,
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  schemeTab: {
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  schemeTabActive: {
+    borderColor: COLORS.accent,
+    backgroundColor: "rgba(167, 139, 250, 0.15)",
+  },
+  schemeTabText: {
+    color: COLORS.textDim,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  schemeTabTextActive: {
+    color: COLORS.accent,
   },
 });
