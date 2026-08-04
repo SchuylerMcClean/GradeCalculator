@@ -12,7 +12,10 @@ import {
   updatePassword,
   updateProfile,
   deleteUser,
+  signOut,
 } from "firebase/auth";
+import { confirmAction } from "@/lib/confirm";
+import { auth } from "@/lib/firebase";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -250,6 +253,17 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleSignOut = async () => {
+    const confirmed = await confirmAction(
+      "Sign Out",
+      "Are you sure you want to sign out?",
+      "Sign Out",
+    );
+    if (!confirmed) return;
+    await signOut(auth);
+    router.replace("/(auth)/login" as any);
+  };
+
   useEffect(() => {
     if (!user) return;
     getUserProfile(user.uid).then((profile) => {
@@ -267,12 +281,14 @@ export default function SettingsScreen() {
       >
         <View style={styles.maxWidthContent}>
           <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backBtn}
-              onPress={() => router.back()}
-            >
-              <Text style={styles.backBtnText}>← Back</Text>
-            </TouchableOpacity>
+            {Platform.OS === "web" && (
+              <TouchableOpacity
+                style={styles.backBtn}
+                onPress={() => router.back()}
+              >
+                <Text style={styles.backBtnText}>← Back</Text>
+              </TouchableOpacity>
+            )}
             <Text style={styles.title}>Settings</Text>
           </View>
 
@@ -346,6 +362,13 @@ export default function SettingsScreen() {
               value={formatDate(user.metadata.lastSignInTime)}
             />
           </View>
+
+          {/* Sign out — mobile only */}
+          {Platform.OS !== "web" && (
+            <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
+              <Text style={styles.signOutBtnText}>Sign Out</Text>
+            </TouchableOpacity>
+          )}
 
           {/* Danger zone section */}
           <Text style={styles.sectionLabel}>DANGER ZONE</Text>
@@ -871,5 +894,18 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "700",
     fontSize: 14,
+  },
+  signOutBtn: {
+    marginTop: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+    alignItems: "center",
+  },
+  signOutBtnText: {
+    color: COLORS.accent,
+    fontSize: 15,
+    fontWeight: "600",
   },
 });

@@ -7,6 +7,7 @@ import Head from "expo-router/head";
 import { Stack } from "expo-router";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
+import { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 
@@ -21,6 +22,16 @@ export const unstable_settings = {
 
 function RootLayoutInner() {
   const colorScheme = useColorScheme();
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+
+  useEffect(() => {
+    const vv = (window as any).visualViewport;
+    if (!vv) return;
+    const onResize = () =>
+      setKeyboardOpen(vv.height < window.innerHeight * 0.75);
+    vv.addEventListener("resize", onResize);
+    return () => vv.removeEventListener("resize", onResize);
+  }, []);
 
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
@@ -38,7 +49,7 @@ function RootLayoutInner() {
             <Stack.Screen name="settings" options={{ headerShown: false }} />
           </Stack>
         </View>
-        <Footer />
+        {!keyboardOpen && <Footer />}
       </View>
       <StatusBar style="auto" />
     </ThemeProvider>
@@ -59,6 +70,7 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: "#020617",
+    height: "100dvh" as any,
   },
   content: {
     flex: 1,

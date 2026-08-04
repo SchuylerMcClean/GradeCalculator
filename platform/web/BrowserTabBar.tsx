@@ -1,6 +1,12 @@
 import { signOut } from "firebase/auth";
 import { useRouter, useSegments } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from "react-native";
 
 import { useAuth } from "@/lib/auth-context";
 import { confirmAction } from "@/lib/confirm";
@@ -25,6 +31,8 @@ export function BrowserTabBar() {
   const { user } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const isNarrow = width < 600;
 
   if (segments[0] === "(auth)") return null;
 
@@ -59,6 +67,7 @@ export function BrowserTabBar() {
               onPress={() => router.push(`/(tabs)/${tab.name}` as any)}
               style={({ hovered }: any) => [
                 styles.tab,
+                isNarrow && styles.tabNarrow,
                 isActive && styles.tabActive,
                 !isActive && hovered && styles.tabHovered,
               ]}
@@ -79,6 +88,7 @@ export function BrowserTabBar() {
               onPress={() => router.push("/settings" as any)}
               style={({ hovered }: any) => [
                 styles.navActionBtn,
+                isNarrow && styles.navActionBtnNarrow,
                 hovered && styles.navActionBtnHovered,
                 segments[0] === "settings" && styles.navActionBtnActive,
               ]}
@@ -96,6 +106,7 @@ export function BrowserTabBar() {
               onPress={handleSignOut}
               style={({ hovered }: any) => [
                 styles.signOutBtn,
+                isNarrow && styles.signOutBtnNarrow,
                 hovered && styles.signOutBtnHovered,
               ]}
             >
@@ -108,6 +119,7 @@ export function BrowserTabBar() {
               onPress={() => router.push("/(auth)/register" as any)}
               style={({ hovered }: any) => [
                 styles.navActionBtn,
+                isNarrow && styles.navActionBtnNarrow,
                 hovered && styles.navActionBtnHovered,
               ]}
             >
@@ -117,6 +129,7 @@ export function BrowserTabBar() {
               onPress={() => router.push("/(auth)/login" as any)}
               style={({ hovered }: any) => [
                 styles.signInBtn,
+                isNarrow && styles.signInBtnNarrow,
                 hovered && styles.signInBtnHovered,
               ]}
             >
@@ -247,4 +260,20 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     userSelect: "none",
   } as any,
+  tabNarrow: {
+    paddingHorizontal: 10,
+    minWidth: 70,
+  },
+  navActionBtnNarrow: {
+    paddingHorizontal: 10,
+    marginRight: 2,
+  },
+  signOutBtnNarrow: {
+    paddingHorizontal: 10,
+    marginRight: 4,
+  },
+  signInBtnNarrow: {
+    paddingHorizontal: 10,
+    marginRight: 4,
+  },
 });

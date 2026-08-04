@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -88,88 +89,95 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={styles.inner}
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.card}>
-          <Text style={styles.title}>Grade Calculator</Text>
-          <Text style={styles.subtitle}>Sign in to your account</Text>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.inner}
+        >
+          <View style={styles.card}>
+            <Text style={styles.title}>Grade Calculator</Text>
+            <Text style={styles.subtitle}>Sign in to your account</Text>
 
-          <Text style={styles.label}>Email or Username</Text>
-          <AppTextInput
-            style={styles.input}
-            value={identifier}
-            onChangeText={(v) => {
-              setIdentifier(v);
-              setError("");
-            }}
-            placeholder=""
-            placeholderTextColor={COLORS.textDim}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            autoComplete="email"
-            maxLength={100}
-            returnKeyType="next"
-            onSubmitEditing={() => passwordRef.current?.focus()}
-            blurOnSubmit={false}
-          />
+            <Text style={styles.label}>Email or Username</Text>
+            <AppTextInput
+              style={styles.input}
+              value={identifier}
+              onChangeText={(v) => {
+                setIdentifier(v);
+                setError("");
+              }}
+              placeholder=""
+              placeholderTextColor={COLORS.textDim}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              autoComplete="email"
+              maxLength={100}
+              returnKeyType="next"
+              onSubmitEditing={() => passwordRef.current?.focus()}
+              blurOnSubmit={false}
+            />
 
-          <Text style={styles.label}>Password</Text>
-          <TextInput
-            ref={passwordRef}
-            style={styles.input}
-            value={password}
-            onChangeText={(v) => {
-              setPassword(v);
-              setError("");
-            }}
-            maxLength={100}
-            placeholderTextColor={COLORS.textDim}
-            secureTextEntry
-            autoComplete="password"
-            returnKeyType="go"
-            onSubmitEditing={handleLogin}
-          />
+            <Text style={styles.label}>Password</Text>
+            <TextInput
+              ref={passwordRef}
+              style={styles.input}
+              value={password}
+              onChangeText={(v) => {
+                setPassword(v);
+                setError("");
+              }}
+              maxLength={100}
+              placeholderTextColor={COLORS.textDim}
+              secureTextEntry
+              autoComplete="password"
+              returnKeyType="go"
+              onSubmitEditing={handleLogin}
+            />
 
-          {!!error && (
-            <View style={styles.errorBanner}>
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          )}
-
-          <TouchableOpacity
-            style={[styles.primaryBtn, loading && styles.btnDisabled]}
-            onPress={handleLogin}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.primaryBtnText}>Sign In</Text>
+            {!!error && (
+              <View style={styles.errorBanner}>
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
             )}
-          </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.linkBtn}
-            onPress={() => router.push("/(auth)/register" as any)}
-          >
-            <Text style={styles.linkText}>
-              Don't have an account?{" "}
-              <Text style={styles.linkAccent}>Register</Text>
-            </Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.primaryBtn, loading && styles.btnDisabled]}
+              onPress={handleLogin}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.primaryBtnText}>Sign In</Text>
+              )}
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.linkBtn, { marginTop: 12 }]}
-            onPress={() => router.replace("/(tabs)/calculator" as any)}
-          >
-            <Text style={styles.linkText}>
-              <Text style={styles.linkAccent}>Continue without an account</Text>
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+            <TouchableOpacity
+              style={styles.linkBtn}
+              onPress={() => router.push("/(auth)/register" as any)}
+            >
+              <Text style={styles.linkText}>
+                Don't have an account?{" "}
+                <Text style={styles.linkAccent}>Register</Text>
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.linkBtn, { marginTop: 12 }]}
+              onPress={() => router.replace("/(tabs)/calculator" as any)}
+            >
+              <Text style={styles.linkText}>
+                <Text style={styles.linkAccent}>
+                  Continue without an account
+                </Text>
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -179,8 +187,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.bg,
   },
+  scrollContent: {
+    flexGrow: 1,
+  },
   inner: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
     padding: 24,

@@ -14,6 +14,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -139,178 +140,183 @@ export default function RegisterScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={styles.inner}
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.card}>
-          {/* Step indicator */}
-          <View style={styles.stepIndicator}>
-            <View style={[styles.stepDot, styles.stepDotActive]} />
-            <View
-              style={[styles.stepLine, step === 2 && styles.stepLineActive]}
-            />
-            <View
-              style={[styles.stepDot, step === 2 && styles.stepDotActive]}
-            />
-          </View>
-          <Text style={styles.stepLabel}>
-            Step {step} of 2 —{" "}
-            {step === 1 ? "Personal Info" : "Account Details"}
-          </Text>
-
-          <Text style={styles.title}>Create Account</Text>
-          <Text style={styles.subtitle}>Start tracking your grades</Text>
-
-          {step === 1 ? (
-            <>
-              <Text style={styles.label}>First Name</Text>
-              <AppTextInput
-                style={styles.input}
-                value={firstName}
-                onChangeText={setFirstName}
-                placeholder="Jane"
-                placeholderTextColor={COLORS.textDim}
-                autoCapitalize="words"
-                autoComplete="given-name"
-                maxLength={100}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.inner}
+        >
+          <View style={styles.card}>
+            {/* Step indicator */}
+            <View style={styles.stepIndicator}>
+              <View style={[styles.stepDot, styles.stepDotActive]} />
+              <View
+                style={[styles.stepLine, step === 2 && styles.stepLineActive]}
               />
-
-              <Text style={styles.label}>Last Name</Text>
-              <AppTextInput
-                style={styles.input}
-                value={lastName}
-                onChangeText={setLastName}
-                placeholder="Smith"
-                placeholderTextColor={COLORS.textDim}
-                autoCapitalize="words"
-                autoComplete="family-name"
-                maxLength={100}
+              <View
+                style={[styles.stepDot, step === 2 && styles.stepDotActive]}
               />
-
-              <Text style={styles.label}>Username</Text>
-              <AppTextInput
-                style={styles.input}
-                value={username}
-                onChangeText={(v) => {
-                  setUsername(v);
-                  clearError();
-                }}
-                placeholder="e.g. jane_smith"
-                placeholderTextColor={COLORS.textDim}
-                autoCapitalize="none"
-                autoComplete="username-new"
-                maxLength={30}
-              />
-
-              {!!error && (
-                <View style={styles.errorBanner}>
-                  <Text style={styles.errorText}>{error}</Text>
-                </View>
-              )}
-
-              <TouchableOpacity
-                style={styles.primaryBtn}
-                onPress={handleNextStep}
-              >
-                <Text style={styles.primaryBtnText}>Continue →</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <Text style={styles.label}>Email</Text>
-              <AppTextInput
-                style={styles.input}
-                value={email}
-                onChangeText={(v) => {
-                  setEmail(v);
-                  clearError();
-                }}
-                placeholder="you@example.com"
-                placeholderTextColor={COLORS.textDim}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                autoComplete="email"
-                maxLength={100}
-              />
-
-              <Text style={styles.label}>Password</Text>
-              <AppTextInput
-                style={styles.input}
-                value={password}
-                onChangeText={(v) => {
-                  setPassword(v);
-                  clearError();
-                }}
-                placeholder="Min. 6 characters"
-                placeholderTextColor={COLORS.textDim}
-                secureTextEntry
-                autoComplete="new-password"
-                maxLength={100}
-              />
-
-              <Text style={styles.label}>Confirm Password</Text>
-              <AppTextInput
-                style={styles.input}
-                value={confirm}
-                onChangeText={(v) => {
-                  setConfirm(v);
-                  clearError();
-                }}
-                placeholder="Re-enter password"
-                placeholderTextColor={COLORS.textDim}
-                secureTextEntry
-                autoComplete="new-password"
-                maxLength={100}
-              />
-
-              {!!error && (
-                <View style={styles.errorBanner}>
-                  <Text style={styles.errorText}>{error}</Text>
-                  {errorShowLogin && (
-                    <TouchableOpacity
-                      onPress={() => router.replace("/(auth)/login" as any)}
-                    >
-                      <Text style={styles.errorLink}>Sign In →</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              )}
-
-              <TouchableOpacity
-                style={[styles.primaryBtn, loading && styles.btnDisabled]}
-                onPress={handleRegister}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.primaryBtnText}>Create Account</Text>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.linkBtn}
-                onPress={() => setStep(1)}
-              >
-                <Text style={styles.linkText}>
-                  <Text style={styles.linkAccent}>← Back</Text>
-                </Text>
-              </TouchableOpacity>
-            </>
-          )}
-
-          <TouchableOpacity
-            style={[styles.linkBtn, { marginTop: 12 }]}
-            onPress={() => router.back()}
-          >
-            <Text style={styles.linkText}>
-              Already have an account?{" "}
-              <Text style={styles.linkAccent}>Sign In</Text>
+            </View>
+            <Text style={styles.stepLabel}>
+              Step {step} of 2 —{" "}
+              {step === 1 ? "Personal Info" : "Account Details"}
             </Text>
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+
+            <Text style={styles.title}>Create Account</Text>
+            <Text style={styles.subtitle}>Start tracking your grades</Text>
+
+            {step === 1 ? (
+              <>
+                <Text style={styles.label}>First Name</Text>
+                <AppTextInput
+                  style={styles.input}
+                  value={firstName}
+                  onChangeText={setFirstName}
+                  placeholder="Jane"
+                  placeholderTextColor={COLORS.textDim}
+                  autoCapitalize="words"
+                  autoComplete="given-name"
+                  maxLength={100}
+                />
+
+                <Text style={styles.label}>Last Name</Text>
+                <AppTextInput
+                  style={styles.input}
+                  value={lastName}
+                  onChangeText={setLastName}
+                  placeholder="Smith"
+                  placeholderTextColor={COLORS.textDim}
+                  autoCapitalize="words"
+                  autoComplete="family-name"
+                  maxLength={100}
+                />
+
+                <Text style={styles.label}>Username</Text>
+                <AppTextInput
+                  style={styles.input}
+                  value={username}
+                  onChangeText={(v) => {
+                    setUsername(v);
+                    clearError();
+                  }}
+                  placeholder="e.g. jane_smith"
+                  placeholderTextColor={COLORS.textDim}
+                  autoCapitalize="none"
+                  autoComplete="username-new"
+                  maxLength={30}
+                />
+
+                {!!error && (
+                  <View style={styles.errorBanner}>
+                    <Text style={styles.errorText}>{error}</Text>
+                  </View>
+                )}
+
+                <TouchableOpacity
+                  style={styles.primaryBtn}
+                  onPress={handleNextStep}
+                >
+                  <Text style={styles.primaryBtnText}>Continue →</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={styles.label}>Email</Text>
+                <AppTextInput
+                  style={styles.input}
+                  value={email}
+                  onChangeText={(v) => {
+                    setEmail(v);
+                    clearError();
+                  }}
+                  placeholder="you@example.com"
+                  placeholderTextColor={COLORS.textDim}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  autoComplete="email"
+                  maxLength={100}
+                />
+
+                <Text style={styles.label}>Password</Text>
+                <AppTextInput
+                  style={styles.input}
+                  value={password}
+                  onChangeText={(v) => {
+                    setPassword(v);
+                    clearError();
+                  }}
+                  placeholder="Min. 6 characters"
+                  placeholderTextColor={COLORS.textDim}
+                  secureTextEntry
+                  autoComplete="new-password"
+                  maxLength={100}
+                />
+
+                <Text style={styles.label}>Confirm Password</Text>
+                <AppTextInput
+                  style={styles.input}
+                  value={confirm}
+                  onChangeText={(v) => {
+                    setConfirm(v);
+                    clearError();
+                  }}
+                  placeholder="Re-enter password"
+                  placeholderTextColor={COLORS.textDim}
+                  secureTextEntry
+                  autoComplete="new-password"
+                  maxLength={100}
+                />
+
+                {!!error && (
+                  <View style={styles.errorBanner}>
+                    <Text style={styles.errorText}>{error}</Text>
+                    {errorShowLogin && (
+                      <TouchableOpacity
+                        onPress={() => router.replace("/(auth)/login" as any)}
+                      >
+                        <Text style={styles.errorLink}>Sign In →</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+
+                <TouchableOpacity
+                  style={[styles.primaryBtn, loading && styles.btnDisabled]}
+                  onPress={handleRegister}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.primaryBtnText}>Create Account</Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.linkBtn}
+                  onPress={() => setStep(1)}
+                >
+                  <Text style={styles.linkText}>
+                    <Text style={styles.linkAccent}>← Back</Text>
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
+
+            <TouchableOpacity
+              style={[styles.linkBtn, { marginTop: 12 }]}
+              onPress={() => router.back()}
+            >
+              <Text style={styles.linkText}>
+                Already have an account?{" "}
+                <Text style={styles.linkAccent}>Sign In</Text>
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -320,8 +326,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.bg,
   },
+  scrollContent: {
+    flexGrow: 1,
+  },
   inner: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
