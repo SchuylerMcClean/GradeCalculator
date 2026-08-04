@@ -50,6 +50,7 @@ import {
   updateAssessment,
   updateCourse,
   updateScheme,
+  deleteScheme,
 } from "@/lib/firestore";
 
 const COLORS = {
@@ -640,6 +641,19 @@ export default function CourseDetailScreen() {
     setRepeatedModalVisible(true);
   };
 
+  const handleDeleteScheme = async (scheme: Scheme) => {
+    const confirmed = await confirmAction(
+      "Delete Scheme",
+      `Remove "${scheme.name}"? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+    try {
+      await deleteScheme(uid, id!, scheme.id);
+    } catch {
+      Alert.alert("Error", "Failed to delete scheme. Please try again.");
+    }
+  };
+
   const handleAddScheme = async () => {
     try {
       if (schemes.length === 0) {
@@ -1200,34 +1214,6 @@ export default function CourseDetailScreen() {
           onLayout={(e) => setSummaryHeight(e.nativeEvent.layout.height)}
         >
           <View style={styles.summaryMaxWidth}>
-            {/* Scheme tabs — only shown when 2+ schemes exist */}
-            {schemes.length >= 2 && (
-              <View style={styles.schemeTabs}>
-                {schemes.map((scheme, idx) => (
-                  <TouchableOpacity
-                    key={scheme.id}
-                    style={[
-                      styles.schemeTab,
-                      activeSchemeIdx === idx && styles.schemeTabActive,
-                    ]}
-                    onPress={() => setActiveSchemeIdx(idx)}
-                    activeOpacity={0.7}
-                  >
-                    <Text
-                      style={[
-                        styles.schemeTabText,
-                        activeSchemeIdx === idx && styles.schemeTabTextActive,
-                      ]}
-                    >
-                      {scheme.name}
-                      {idx === bestSchemeIdx && schemeGrades[idx] !== null
-                        ? " ★"
-                        : ""}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
             {/* Grade summary */}
             <View style={styles.summaryCard}>
               <View style={styles.summaryItem}>
@@ -1306,6 +1292,53 @@ export default function CourseDetailScreen() {
                   </TouchableOpacity>
                 </View>
               )}
+            {/* Scheme tabs — only shown when 2+ schemes exist */}
+            {schemes.length >= 2 && (
+              <View style={styles.schemeTabs}>
+                {schemes.map((scheme, idx) => (
+                  <View
+                    key={scheme.id}
+                    style={[
+                      styles.schemeTab,
+                      activeSchemeIdx === idx && styles.schemeTabActive,
+                    ]}
+                  >
+                    <TouchableOpacity
+                      onPress={() => setActiveSchemeIdx(idx)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.schemeTabText,
+                          activeSchemeIdx === idx && styles.schemeTabTextActive,
+                        ]}
+                      >
+                        {idx === bestSchemeIdx && schemeGrades[idx] !== null
+                          ? "★ "
+                          : ""}
+                        {scheme.name}
+                      </Text>
+                    </TouchableOpacity>
+                    {activeSchemeIdx === idx && (
+                      <TouchableOpacity
+                        onPress={() => handleDeleteScheme(scheme)}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                        style={styles.schemeTabDelete}
+                      >
+                        <Text
+                          style={[
+                            styles.schemeTabDeleteText,
+                            styles.schemeTabDeleteTextActive,
+                          ]}
+                        >
+                          ✕
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))}
+              </View>
+            )}
           </View>
         </View>
 
@@ -2176,13 +2209,6 @@ const styles = StyleSheet.create({
     gap: 8,
     flexWrap: "wrap",
   },
-  schemeTab: {
-    paddingHorizontal: 16,
-    paddingVertical: 7,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
   schemeTabActive: {
     borderColor: COLORS.accent,
     backgroundColor: "rgba(167, 139, 250, 0.15)",
@@ -2194,5 +2220,27 @@ const styles = StyleSheet.create({
   },
   schemeTabTextActive: {
     color: COLORS.accent,
+  },
+  schemeTab: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  schemeTabDelete: {
+    opacity: 0.5,
+  },
+  schemeTabDeleteText: {
+    color: COLORS.textDim,
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  schemeTabDeleteTextActive: {
+    color: COLORS.accent,
+    opacity: 1,
   },
 });
