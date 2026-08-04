@@ -259,6 +259,29 @@ function RepeatedAssessmentCard({
   const repeatedGrade = computeRepeatedGrade(item);
   const gradedCount = (item.items ?? []).filter((i) => i.grade !== null).length;
   const totalItems = item.items?.length ?? 0;
+  const droppedIndices = useMemo(() => {
+    const dropCount = Math.max(
+      0,
+      localGrades.length - (item.countBest ?? localGrades.length),
+    );
+    if (dropCount === 0) return new Set<number>();
+    const ungradedIdxs = localGrades
+      .map((g, i) => ({ i, empty: g.trim() === "" || isNaN(parseFloat(g)) }))
+      .filter(({ empty }) => empty)
+      .map(({ i }) => i);
+    const dropped = new Set<number>(ungradedIdxs);
+    const remainingDrop = Math.max(0, dropCount - ungradedIdxs.length);
+    if (remainingDrop > 0) {
+      const graded = localGrades
+        .map((g, i) => ({ i, grade: parseFloat(g) }))
+        .filter(({ grade }) => !isNaN(grade));
+      [...graded]
+        .sort((a, b) => a.grade - b.grade)
+        .slice(0, remainingDrop)
+        .forEach(({ i }) => dropped.add(i));
+    }
+    return dropped;
+  }, [localGrades, item.countBest]);
 
   return (
     <View onLayout={(e) => onItemLayout(e.nativeEvent.layout.height)}>
@@ -342,10 +365,26 @@ function RepeatedAssessmentCard({
       {expanded && (
         <View style={styles.repeatedItemsWrapper}>
           {(item.items ?? []).map((bi, idx) => (
-            <View key={bi.id} style={styles.repeatedItemRow}>
-              <Text style={styles.repeatedItemLabel}>Item {idx + 1}</Text>
+            <View
+              key={bi.id}
+              style={[
+                styles.repeatedItemRow,
+                droppedIndices.has(idx) && styles.repeatedDroppedRow,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.repeatedItemLabel,
+                  droppedIndices.has(idx) && { color: COLORS.danger },
+                ]}
+              >
+                Item {idx + 1}
+              </Text>
               <AppTextInput
-                style={styles.repeatedItemInput}
+                style={[
+                  styles.repeatedItemInput,
+                  droppedIndices.has(idx) && { borderColor: COLORS.danger },
+                ]}
                 placeholder="—"
                 placeholderTextColor={COLORS.textDim}
                 keyboardType="decimal-pad"
@@ -360,7 +399,14 @@ function RepeatedAssessmentCard({
                   onUpdateItemGrade(idx, localGradesRef.current[idx] ?? "")
                 }
               />
-              <Text style={styles.repeatedItemPercent}>%</Text>
+              <Text
+                style={[
+                  styles.repeatedItemPercent,
+                  droppedIndices.has(idx) && { color: COLORS.danger },
+                ]}
+              >
+                %
+              </Text>
             </View>
           ))}
         </View>
@@ -2150,6 +2196,9 @@ const styles = StyleSheet.create({
     gap: 10,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.06)",
+  },
+  repeatedDroppedRow: {
+    backgroundColor: "rgba(248, 113, 113, 0.08)",
   },
   repeatedItemLabel: {
     color: COLORS.textDim,
