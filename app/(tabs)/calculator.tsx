@@ -156,7 +156,6 @@ export default function HomeScreen() {
   >({});
   const [bundleDrafts, setBundleDrafts] =
     useState<Record<string, { total?: string; countBest?: string }>>();
-  const [weightWarningDismissed, setWeightWarningDismissed] = useState(false);
   const addButtonRef = useRef<any>(null);
   const [dropdownTop, setDropdownTop] = useState(56);
 
@@ -191,10 +190,6 @@ export default function HomeScreen() {
     });
     return bestIdx;
   }, [schemeGrades]);
-
-  useEffect(() => {
-    setWeightWarningDismissed(false);
-  }, [worthSum]);
 
   const requiredScore = useMemo((): number | null => {
     const desired = parseFloat(desiredGrade);
@@ -306,7 +301,11 @@ export default function HomeScreen() {
           } else {
             items = items.slice(0, newTotal);
           }
-          return { ...r, items, countBest: Math.min(r.countBest, newTotal) };
+          return {
+            ...r,
+            items,
+            countBest: Math.max(1, newTotal - (r.items.length - r.countBest)),
+          };
         }
         return r;
       }),
@@ -484,23 +483,6 @@ export default function HomeScreen() {
             </View>
             <View style={styles.summaryDivider} />
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>Graded Weight</Text>
-              <Text
-                style={[
-                  styles.summaryValue,
-                  {
-                    color:
-                      gradedWorthSum === worthSum
-                        ? COLORS.success
-                        : COLORS.accent,
-                  },
-                ]}
-              >
-                {gradedWorthSum}%
-              </Text>
-            </View>
-            <View style={styles.summaryDivider} />
-            <View style={styles.summaryItem}>
               <Text style={styles.summaryLabel}>Total Weight</Text>
               <Text
                 style={[
@@ -512,25 +494,6 @@ export default function HomeScreen() {
               </Text>
             </View>
           </View>
-
-          {/* Weight warning */}
-          {worthSum !== 100 && rows.length > 0 && !weightWarningDismissed && (
-            <View style={styles.weightWarning}>
-              <Text style={styles.weightWarningText}>
-                ⚠ Your assessment weights add up to {worthSum}%, not 100%.{" "}
-                {worthSum < 100
-                  ? "Add more components until they add up to 100%."
-                  : "Remove or reduce components so they add up to 100%."}
-              </Text>
-              <TouchableOpacity
-                onPress={() => setWeightWarningDismissed(true)}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                style={styles.weightWarningClose}
-              >
-                <Text style={styles.weightWarningCloseText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-          )}
 
           {/* Scheme tabs */}
           {schemes.length >= 2 && (
@@ -593,26 +556,29 @@ export default function HomeScreen() {
                 const dropCount = Math.max(0, row.items.length - row.countBest);
                 if (dropCount === 0) return new Set<number>();
                 const ungradedIdxs = row.items
-                  .map((it, i) => ({
-                    i,
-                    empty:
-                      it.grade.trim() === "" || isNaN(parseFloat(it.grade)),
-                  }))
-                  .filter(({ empty }) => empty)
-                  .map(({ i }) => i);
-                const dropped = new Set<number>(ungradedIdxs);
-                const remainingDrop = Math.max(
-                  0,
-                  dropCount - ungradedIdxs.length,
-                );
-                if (remainingDrop > 0) {
-                  const graded = row.items
-                    .map((it, i) => ({ i, grade: parseFloat(it.grade) }))
-                    .filter(({ grade }) => !isNaN(grade));
-                  [...graded]
-                    .sort((a, b) => a.grade - b.grade)
-                    .slice(0, remainingDrop)
-                    .forEach(({ i }) => dropped.add(i));
+                  .map((it, i) => i)
+                  .filter(
+                    (i) =>
+                      row.items[i].grade.trim() === "" ||
+                      isNaN(parseFloat(row.items[i].grade)),
+                  );
+                const dropped = new Set<number>();
+                if (ungradedIdxs.length >= dropCount) {
+                  // More ungraded than needed — show only the bottom dropCount as red
+                  ungradedIdxs.slice(-dropCount).forEach((i) => dropped.add(i));
+                } else {
+                  // Drop all ungraded first, then fill with lowest-graded
+                  ungradedIdxs.forEach((i) => dropped.add(i));
+                  const remainingDrop = dropCount - ungradedIdxs.length;
+                  if (remainingDrop > 0) {
+                    const graded = row.items
+                      .map((it, i) => ({ i, grade: parseFloat(it.grade) }))
+                      .filter(({ grade }) => !isNaN(grade));
+                    [...graded]
+                      .sort((a, b) => a.grade - b.grade || b.i - a.i)
+                      .slice(0, remainingDrop)
+                      .forEach(({ i }) => dropped.add(i));
+                  }
                 }
                 return dropped;
               })();
