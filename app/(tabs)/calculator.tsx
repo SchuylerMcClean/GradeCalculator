@@ -586,13 +586,14 @@ export default function HomeScreen() {
                 <View key={row.id}>
                   <TouchableOpacity
                     style={[
-                      styles.bundleCard,
+                      styles.inputRowCard,
                       expanded
                         ? {
+                            marginBottom: 0,
                             borderBottomLeftRadius: 0,
                             borderBottomRightRadius: 0,
                           }
-                        : { marginBottom: 10 },
+                        : {},
                     ]}
                     onPress={() =>
                       setExpandedBundles((prev) => ({
@@ -602,48 +603,36 @@ export default function HomeScreen() {
                     }
                     activeOpacity={0.7}
                   >
-                    <View style={styles.bundleInner}>
-                      <View style={styles.bundleLeft}>
-                        <AppTextInput
-                          style={styles.bundleNameInput}
-                          placeholder="Assessment Name"
-                          placeholderTextColor={COLORS.textDim}
-                          value={row.name}
-                          onChangeText={(v) =>
-                            updateBundleField(row.id, "name", v)
-                          }
-                        />
-                        <Text style={styles.bundleSubtitle}>
-                          Weight: {w || "0"}% · Top {row.countBest} of{" "}
-                          {row.items.length} ·{" "}
-                          {row.items.length - row.countBest} dropped ·{" "}
-                          {gradedCount}/{row.items.length} graded
+                    <AppTextInput
+                      style={[styles.inputBox, styles.inputBoxName]}
+                      placeholder="Assessment Name"
+                      placeholderTextColor={COLORS.textDim}
+                      value={row.name}
+                      onChangeText={(v) => updateBundleField(row.id, "name", v)}
+                    />
+                    <View style={styles.bundleInfoArea}>
+                      <Text style={styles.bundleChevron}>
+                        {expanded ? "▲" : "▼"}
+                      </Text>
+                      {bundleGrade !== null ? (
+                        <Text style={styles.bundleGradeText}>
+                          {bundleGrade.toFixed(1)}%
                         </Text>
-                      </View>
-                      <View style={styles.bundleRight}>
-                        <Text style={styles.bundleChevron}>
-                          {expanded ? "▲" : "▼"}
-                        </Text>
-                        {bundleGrade !== null ? (
-                          <Text style={styles.bundleGradeText}>
-                            {bundleGrade.toFixed(1)}%
-                          </Text>
-                        ) : (
-                          <Text style={styles.bundlePendingText}>—</Text>
-                        )}
-                        <TouchableOpacity
-                          style={styles.deleteButton}
-                          onPress={() => removeRow(row.id)}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <Text
-                            style={{ color: COLORS.danger, fontWeight: "bold" }}
-                          >
-                            ✕
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
+                      ) : (
+                        <Text style={styles.bundlePendingText}>—</Text>
+                      )}
                     </View>
+                    <TouchableOpacity
+                      style={styles.deleteButton}
+                      onPress={() => removeRow(row.id)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Text
+                        style={{ color: COLORS.danger, fontWeight: "bold" }}
+                      >
+                        ✕
+                      </Text>
+                    </TouchableOpacity>
                   </TouchableOpacity>
 
                   {expanded && (
@@ -1081,6 +1070,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   bundleLeft: { flex: 1 },
+  bundleInfoArea: {
+    flex: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
   bundleNameInput: {
     color: COLORS.textMain,
     fontSize: 15,
